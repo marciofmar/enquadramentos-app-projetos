@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info } from 'luci
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
-interface Atividade { nome: string; descricao: string; participantes: Participante[] }
+interface Atividade { nome: string; descricao: string; data_prevista: string; participantes: Participante[] }
 interface Entrega {
   nome: string; descricao: string; dependencias_criticas: string
   quinzena: string; participantes: Participante[]; atividades: Atividade[]
@@ -103,7 +103,7 @@ export default function NovoProjetoPage() {
 
   function addAtividade(entregaIdx: number) {
     setEntregas(prev => prev.map((e, i) => i === entregaIdx ? {
-      ...e, atividades: [...e.atividades, { nome: '', descricao: '', participantes: [] }]
+      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', participantes: [] }]
     } : e))
   }
 
@@ -154,7 +154,6 @@ export default function NovoProjetoPage() {
       alert('Preencha todos os campos obrigatórios e selecione ao menos uma ação estratégica.')
       return
     }
-    // Validate entregas that have content
     for (const e of entregas) {
       if (!e.nome.trim() || !e.descricao.trim()) {
         alert('Preencha nome e descrição de todas as entregas.')
@@ -165,9 +164,36 @@ export default function NovoProjetoPage() {
         alert(`A entrega "${e.nome}" precisa de ao menos um participante com papel definido.`)
         return
       }
+      // Check duplicate setores in entrega
+      const keys = validParticipantes.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+      if (new Set(keys).size !== keys.length) {
+        alert(`A entrega "${e.nome}" tem setores/participantes duplicados. Use o campo "papel" para múltiplos papéis do mesmo setor.`)
+        return
+      }
       for (const a of e.atividades) {
         if (!a.nome.trim() || !a.descricao.trim()) {
           alert('Preencha nome e descrição de todas as atividades.')
+          return
+        }
+        // Check atividade date <= entrega quinzena
+        if (a.data_prevista && e.quinzena && a.data_prevista > e.quinzena) {
+          alert(`A atividade "${a.nome}" tem data posterior à quinzena da entrega "${e.nome}".`)
+          return
+        }
+        // Check atividade participantes are subset of entrega participantes
+        const entregaKeys = new Set(validParticipantes.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
+        const ativValidP = a.participantes.filter(p => p.papel.trim())
+        for (const ap of ativValidP) {
+          const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
+          if (!entregaKeys.has(apKey)) {
+            alert(`A atividade "${a.nome}" inclui um participante que não está na entrega "${e.nome}".`)
+            return
+          }
+        }
+        // Check duplicate setores in atividade
+        const aKeys = ativValidP.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+        if (new Set(aKeys).size !== aKeys.length) {
+          alert(`A atividade "${a.nome}" tem participantes duplicados. Use o campo "papel" para múltiplos papéis.`)
           return
         }
       }
@@ -175,25 +201,21 @@ export default function NovoProjetoPage() {
 
     setSaving(true)
     try {
-      // 1. Create project
       const { data: proj, error: projErr } = await supabase.from('projetos').insert({
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
         setor_lider_id: setorLiderId, criado_por: profile!.id
       }).select().single()
       if (projErr) throw projErr
 
-      // 2. Link acoes
       await supabase.from('projeto_acoes').insert(
         acoesSelecionadas.map(aid => ({ projeto_id: proj.id, acao_estrategica_id: aid })))
 
-      // 3. Audit log - project creation
       await supabase.from('audit_log').insert({
         usuario_id: profile!.id, usuario_nome: profile!.nome,
         tipo_acao: 'create', entidade: 'projeto', entidade_id: proj.id,
         conteudo_novo: { nome: nome.trim(), descricao: descricao.trim(), setor_lider_id: setorLiderId }
       })
 
-      // 4. Create entregas
       for (const e of entregas) {
         const { data: ent, error: entErr } = await supabase.from('entregas').insert({
           projeto_id: proj.id, nome: e.nome.trim(), descricao: e.descricao.trim(),
@@ -202,7 +224,6 @@ export default function NovoProjetoPage() {
         }).select().single()
         if (entErr) throw entErr
 
-        // Participantes da entrega
         const validP = e.participantes.filter(p => p.papel.trim())
         if (validP.length > 0) {
           await supabase.from('entrega_participantes').insert(
@@ -214,17 +235,16 @@ export default function NovoProjetoPage() {
             })))
         }
 
-        // Audit log - entrega
         await supabase.from('audit_log').insert({
           usuario_id: profile!.id, usuario_nome: profile!.nome,
           tipo_acao: 'create', entidade: 'entrega', entidade_id: ent.id,
           conteudo_novo: { nome: e.nome.trim(), projeto_id: proj.id }
         })
 
-        // Atividades
         for (const a of e.atividades) {
           const { data: ativ, error: ativErr } = await supabase.from('atividades').insert({
-            entrega_id: ent.id, nome: a.nome.trim(), descricao: a.descricao.trim()
+            entrega_id: ent.id, nome: a.nome.trim(), descricao: a.descricao.trim(),
+            data_prevista: a.data_prevista || null
           }).select().single()
           if (ativErr) throw ativErr
 
@@ -248,7 +268,14 @@ export default function NovoProjetoPage() {
     setSaving(false)
   }
 
-  function renderParticipanteSelect(p: Participante, onChange: (field: string, value: any) => void, onRemove: () => void) {
+  // Helper: key de um participante para comparação
+  function pKey(p: Participante) {
+    return p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante
+  }
+
+  // Participante select para ENTREGA (todos os setores, sem duplicados)
+  function renderEntregaParticipanteSelect(p: Participante, idx: number, allParts: Participante[], onChange: (field: string, value: any) => void, onRemove: () => void) {
+    const usedKeys = new Set(allParts.filter((_, i) => i !== idx).map(pKey))
     return (
       <div className="flex gap-2 items-start">
         <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
@@ -262,20 +289,89 @@ export default function NovoProjetoPage() {
           }} className="input-field text-xs flex-1">
           <option value="">Selecione o participante...</option>
           <optgroup label="Setores">
-            {setores.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+            {setores.map(s => (
+              <option key={s.id} value={s.id} disabled={usedKeys.has(`s_${s.id}`)}>{s.codigo} — {s.nome_completo}{usedKeys.has(`s_${s.id}`) ? ' (já incluído)' : ''}</option>
+            ))}
           </optgroup>
           <optgroup label="Atores Externos">
-            <option value="externo_subsegop">Ator externo à SUBSEGOP</option>
-            <option value="externo_sedec">Ator externo à SEDEC</option>
+            <option value="externo_subsegop" disabled={usedKeys.has('externo_subsegop')}>Ator externo à SUBSEGOP{usedKeys.has('externo_subsegop') ? ' (já incluído)' : ''}</option>
+            <option value="externo_sedec" disabled={usedKeys.has('externo_sedec')}>Ator externo à SEDEC{usedKeys.has('externo_sedec') ? ' (já incluído)' : ''}</option>
           </optgroup>
         </select>
         <input type="text" value={p.papel} onChange={e => onChange('papel', e.target.value)}
-          placeholder="Papel do participante" className="input-field text-xs flex-1" />
+          placeholder="Papel (use este campo para múltiplos papéis)" className="input-field text-xs flex-1" />
         <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600 mt-2 shrink-0">
           <Trash2 size={14} />
         </button>
       </div>
     )
+  }
+
+  // Participante select para ATIVIDADE (apenas setores da entrega, sem duplicados)
+  function renderAtividadeParticipanteSelect(p: Participante, idx: number, allParts: Participante[], entregaParts: Participante[], onChange: (field: string, value: any) => void, onRemove: () => void) {
+    const usedKeys = new Set(allParts.filter((_, i) => i !== idx).map(pKey))
+    const entregaValidParts = entregaParts.filter(ep => ep.papel.trim())
+    return (
+      <div className="flex gap-2 items-start">
+        <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
+          onChange={e => {
+            const v = e.target.value
+            if (v === 'externo_subsegop' || v === 'externo_sedec') {
+              onChange('tipo_participante', v); onChange('setor_id', null)
+            } else {
+              onChange('tipo_participante', 'setor'); onChange('setor_id', parseInt(v) || null)
+            }
+          }} className="input-field text-xs flex-1">
+          <option value="">Selecione o participante...</option>
+          {entregaValidParts.map(ep => {
+            if (ep.tipo_participante === 'setor' && ep.setor_id) {
+              const s = setores.find(ss => ss.id === ep.setor_id)
+              const k = `s_${ep.setor_id}`
+              return <option key={k} value={ep.setor_id} disabled={usedKeys.has(k)}>{s?.codigo || 'Setor'}{usedKeys.has(k) ? ' (já incluído)' : ''}</option>
+            } else {
+              const label = ep.tipo_participante === 'externo_subsegop' ? 'Ator externo à SUBSEGOP' : 'Ator externo à SEDEC'
+              return <option key={ep.tipo_participante} value={ep.tipo_participante} disabled={usedKeys.has(ep.tipo_participante)}>{label}{usedKeys.has(ep.tipo_participante) ? ' (já incluído)' : ''}</option>
+            }
+          })}
+          {entregaValidParts.length === 0 && <option disabled>Adicione participantes na entrega primeiro</option>}
+        </select>
+        <input type="text" value={p.papel} onChange={e => onChange('papel', e.target.value)}
+          placeholder="Papel na atividade" className="input-field text-xs flex-1" />
+        <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600 mt-2 shrink-0">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    )
+  }
+
+  // Validação cruzada: ao alterar quinzena da entrega, checar se atividades ficam inválidas
+  function handleQuinzenaChange(eIdx: number, newQuinzena: string) {
+    const entrega = entregas[eIdx]
+    if (newQuinzena) {
+      const ativComDataPosterior = entrega.atividades.filter(a => a.data_prevista && a.data_prevista > newQuinzena)
+      if (ativComDataPosterior.length > 0) {
+        const nomes = ativComDataPosterior.map(a => `"${a.nome}"`).join(', ')
+        alert(`Não é possível definir esta quinzena. As atividades ${nomes} têm datas posteriores. Ajuste-as primeiro.`)
+        return
+      }
+    }
+    updateEntrega(eIdx, 'quinzena', newQuinzena)
+  }
+
+  // Validação cruzada: ao remover participante de entrega, checar se está em alguma atividade
+  function handleRemoveParticipanteEntrega(eIdx: number, pIdx: number) {
+    const entrega = entregas[eIdx]
+    const removendo = entrega.participantes[pIdx]
+    const rKey = pKey(removendo)
+    const ativComEsseSetor = entrega.atividades.filter(a =>
+      a.participantes.some(ap => pKey(ap) === rKey)
+    )
+    if (ativComEsseSetor.length > 0) {
+      const nomes = ativComEsseSetor.map(a => `"${a.nome}"`).join(', ')
+      alert(`Não é possível remover este participante. Ele está incluído nas atividades: ${nomes}. Remova-o das atividades primeiro.`)
+      return
+    }
+    removeParticipanteEntrega(eIdx, pIdx)
   }
 
   if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
@@ -380,9 +476,9 @@ export default function NovoProjetoPage() {
                     <div className="space-y-2">
                       {e.participantes.map((p, pIdx) => (
                         <div key={pIdx}>
-                          {renderParticipanteSelect(p,
+                          {renderEntregaParticipanteSelect(p, pIdx, e.participantes,
                             (f, v) => updateParticipanteEntrega(eIdx, pIdx, f, v),
-                            () => removeParticipanteEntrega(eIdx, pIdx))}
+                            () => handleRemoveParticipanteEntrega(eIdx, pIdx))}
                         </div>
                       ))}
                     </div>
@@ -397,7 +493,7 @@ export default function NovoProjetoPage() {
                     </div>
                     <div>
                       <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>
-                      <select value={e.quinzena} onChange={ev => updateEntrega(eIdx, 'quinzena', ev.target.value)}
+                      <select value={e.quinzena} onChange={ev => handleQuinzenaChange(eIdx, ev.target.value)}
                         className="input-field text-xs">
                         <option value="">Sem prazo definido</option>
                         {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
@@ -435,16 +531,40 @@ export default function NovoProjetoPage() {
                           <input type="text" value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
                             placeholder="Descrição da atividade *" className="input-field text-xs" />
 
-                          {/* Participantes da atividade */}
+                          {/* Data prevista da atividade */}
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500">Data prevista (opcional)</label>
+                            <input type="date" value={a.data_prevista}
+                              max={e.quinzena || undefined}
+                              onChange={ev => {
+                                const newDate = ev.target.value
+                                if (newDate && e.quinzena && newDate > e.quinzena) {
+                                  alert(`A data não pode ser posterior à quinzena da entrega (${e.quinzena}).`)
+                                  return
+                                }
+                                updateAtividade(eIdx, aIdx, 'data_prevista', newDate)
+                              }}
+                              className="input-field text-xs" />
+                            {e.quinzena && <span className="text-[9px] text-gray-400">Limite: {e.quinzena}</span>}
+                          </div>
+
+                          {/* Participantes da atividade (apenas setores da entrega) */}
                           <div>
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] font-medium text-gray-500">Participantes</span>
-                              <button type="button" onClick={() => addParticipanteAtividade(eIdx, aIdx)}
+                              <button type="button" onClick={() => {
+                                const entregaValid = e.participantes.filter(p => p.papel.trim())
+                                if (entregaValid.length === 0) { alert('Adicione participantes na entrega primeiro.'); return }
+                                addParticipanteAtividade(eIdx, aIdx)
+                              }}
                                 className="text-[10px] text-orange-500 hover:text-orange-700 font-medium">+ Participante</button>
                             </div>
+                            {e.participantes.filter(p => p.papel.trim()).length === 0 && a.participantes.length === 0 && (
+                              <p className="text-[9px] text-gray-400 italic">Disponível após incluir participantes na entrega.</p>
+                            )}
                             {a.participantes.map((p, pIdx) => (
                               <div key={pIdx} className="mt-1">
-                                {renderParticipanteSelect(p,
+                                {renderAtividadeParticipanteSelect(p, pIdx, a.participantes, e.participantes,
                                   (f, v) => updateParticipanteAtividade(eIdx, aIdx, pIdx, f, v),
                                   () => removeParticipanteAtividade(eIdx, aIdx, pIdx))}
                               </div>

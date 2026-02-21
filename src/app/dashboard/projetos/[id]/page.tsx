@@ -83,7 +83,7 @@ export default function ProjetoDetalhePage() {
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
         entregas(id, nome, descricao, dependencias_criticas, data_final_prevista, status, motivo_status,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
-          atividades(id, nome, descricao,
+          atividades(id, nome, descricao, data_prevista,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
           )
         )`)
@@ -178,6 +178,41 @@ export default function ProjetoDetalhePage() {
 
   async function saveEditEntrega(entregaId: number) {
     setSaving(true)
+
+    // Validate: no duplicate participantes
+    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
+    const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+    if (new Set(pKeys).size !== pKeys.length) {
+      alert('Há participantes duplicados nesta entrega. Use o campo "papel" para múltiplos papéis do mesmo setor.')
+      setSaving(false); return
+    }
+
+    // Validate: if quinzena changed, check atividades dates
+    const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
+    if (editForm.data_final_prevista && entrega?.atividades) {
+      const ativPosterior = entrega.atividades.filter((a: any) => a.data_prevista && a.data_prevista > editForm.data_final_prevista)
+      if (ativPosterior.length > 0) {
+        const nomes = ativPosterior.map((a: any) => `"${a.nome}"`).join(', ')
+        alert(`Não é possível definir esta quinzena. As atividades ${nomes} têm datas posteriores. Ajuste-as primeiro.`)
+        setSaving(false); return
+      }
+    }
+
+    // Validate: if participante removed, check atividades don't reference them
+    if (entrega?.atividades) {
+      const newKeys = new Set(validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
+      for (const ativ of entrega.atividades) {
+        for (const ap of (ativ.atividade_participantes || [])) {
+          const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
+          if (!newKeys.has(apKey)) {
+            const label = ap.tipo_participante === 'setor' ? (ap.setor?.codigo || 'Setor') : ap.tipo_participante
+            alert(`Não é possível remover "${label}" desta entrega. Está incluído na atividade "${ativ.nome}". Remova-o da atividade primeiro.`)
+            setSaving(false); return
+          }
+        }
+      }
+    }
+
     const { error } = await supabase.from('entregas').update({
       nome: editForm.nome, descricao: editForm.descricao,
       dependencias_criticas: editForm.dependencias_criticas || null,
@@ -188,7 +223,6 @@ export default function ProjetoDetalhePage() {
 
     // Rebuild participantes
     await supabase.from('entrega_participantes').delete().eq('entrega_id', entregaId)
-    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
     if (validP.length > 0) {
       await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
         entrega_id: entregaId,
@@ -219,9 +253,11 @@ export default function ProjetoDetalhePage() {
   }
 
   // Atividade edit
-  function startEditAtividade(a: any) {
+  function startEditAtividade(a: any, entrega: any) {
     setEditForm({
-      nome: a.nome, descricao: a.descricao,
+      nome: a.nome, descricao: a.descricao, data_prevista: a.data_prevista || '',
+      entrega_data_final: entrega.data_final_prevista || '',
+      entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
         id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
       })) || []
@@ -231,13 +267,39 @@ export default function ProjetoDetalhePage() {
 
   async function saveEditAtividade(ativId: number, entregaId: number) {
     setSaving(true)
+
+    // Validate date <= entrega quinzena
+    if (editForm.data_prevista && editForm.entrega_data_final && editForm.data_prevista > editForm.entrega_data_final) {
+      alert(`A data da atividade não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+      setSaving(false); return
+    }
+
+    // Validate: participantes are subset of entrega
+    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
+    const entregaKeys = new Set((editForm.entrega_participantes || []).map((ep: any) =>
+      ep.tipo_participante === 'setor' ? `s_${ep.setor_id}` : ep.tipo_participante))
+    for (const ap of validP) {
+      const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
+      if (!entregaKeys.has(apKey)) {
+        alert('Esta atividade inclui um participante que não está na entrega. Remova-o ou adicione-o à entrega primeiro.')
+        setSaving(false); return
+      }
+    }
+
+    // Validate: no duplicates
+    const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+    if (new Set(pKeys).size !== pKeys.length) {
+      alert('Há participantes duplicados nesta atividade. Use o campo "papel" para múltiplos papéis.')
+      setSaving(false); return
+    }
+
     const { error } = await supabase.from('atividades').update({
-      nome: editForm.nome, descricao: editForm.descricao
+      nome: editForm.nome, descricao: editForm.descricao,
+      data_prevista: editForm.data_prevista || null
     }).eq('id', ativId)
     if (error) { alert(error.message); setSaving(false); return }
 
     await supabase.from('atividade_participantes').delete().eq('atividade_id', ativId)
-    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
     if (validP.length > 0) {
       await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
         atividade_id: ativId,
@@ -281,7 +343,13 @@ export default function ProjetoDetalhePage() {
     return p.setor?.codigo || 'Setor'
   }
 
-  function renderParticipanteEditRow(p: any, idx: number, onChange: (i: number, f: string, v: any) => void, onRemove: (i: number) => void) {
+  function pKeyEdit(p: any) {
+    return p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante
+  }
+
+  // Participante edit row for ENTREGA (all setores, no duplicates)
+  function renderEntregaParticipanteEditRow(p: any, idx: number, allParts: any[], onChange: (i: number, f: string, v: any) => void, onRemove: (i: number) => void) {
+    const usedKeys = new Set(allParts.filter((_: any, i: number) => i !== idx).map(pKeyEdit))
     return (
       <div key={idx} className="flex gap-2 items-start">
         <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
@@ -292,15 +360,46 @@ export default function ProjetoDetalhePage() {
           }} className="input-field text-xs flex-1">
           <option value="">Participante...</option>
           <optgroup label="Setores">
-            {setores.map((s: any) => <option key={s.id} value={s.id}>{s.codigo}</option>)}
+            {setores.map((s: any) => <option key={s.id} value={s.id} disabled={usedKeys.has(`s_${s.id}`)}>{s.codigo}{usedKeys.has(`s_${s.id}`) ? ' (já)' : ''}</option>)}
           </optgroup>
           <optgroup label="Externos">
-            <option value="externo_subsegop">Ext. SUBSEGOP</option>
-            <option value="externo_sedec">Ext. SEDEC</option>
+            <option value="externo_subsegop" disabled={usedKeys.has('externo_subsegop')}>Ext. SUBSEGOP{usedKeys.has('externo_subsegop') ? ' (já)' : ''}</option>
+            <option value="externo_sedec" disabled={usedKeys.has('externo_sedec')}>Ext. SEDEC{usedKeys.has('externo_sedec') ? ' (já)' : ''}</option>
           </optgroup>
         </select>
         <input type="text" value={p.papel || ''} onChange={ev => onChange(idx, 'papel', ev.target.value)}
-          placeholder="Papel" className="input-field text-xs flex-1" />
+          placeholder="Papel (múltiplos papéis aqui)" className="input-field text-xs flex-1" />
+        <button type="button" onClick={() => onRemove(idx)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={13} /></button>
+      </div>
+    )
+  }
+
+  // Participante edit row for ATIVIDADE (only entrega participantes, no duplicates)
+  function renderAtividadeParticipanteEditRow(p: any, idx: number, allParts: any[], entregaParts: any[], onChange: (i: number, f: string, v: any) => void, onRemove: (i: number) => void) {
+    const usedKeys = new Set(allParts.filter((_: any, i: number) => i !== idx).map(pKeyEdit))
+    return (
+      <div key={idx} className="flex gap-2 items-start">
+        <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
+          onChange={ev => {
+            const v = ev.target.value
+            if (v === 'externo_subsegop' || v === 'externo_sedec') { onChange(idx, 'tipo_participante', v); onChange(idx, 'setor_id', null) }
+            else { onChange(idx, 'tipo_participante', 'setor'); onChange(idx, 'setor_id', parseInt(v) || null) }
+          }} className="input-field text-xs flex-1">
+          <option value="">Participante...</option>
+          {entregaParts.map((ep: any) => {
+            if (ep.tipo_participante === 'setor' && ep.setor_id) {
+              const s = setores.find((ss: any) => ss.id === ep.setor_id)
+              const k = `s_${ep.setor_id}`
+              return <option key={k} value={ep.setor_id} disabled={usedKeys.has(k)}>{s?.codigo || 'Setor'}{usedKeys.has(k) ? ' (já)' : ''}</option>
+            } else {
+              const label = ep.tipo_participante === 'externo_subsegop' ? 'Ext. SUBSEGOP' : 'Ext. SEDEC'
+              return <option key={ep.tipo_participante} value={ep.tipo_participante} disabled={usedKeys.has(ep.tipo_participante)}>{label}{usedKeys.has(ep.tipo_participante) ? ' (já)' : ''}</option>
+            }
+          })}
+          {entregaParts.length === 0 && <option disabled>Adicione participantes na entrega</option>}
+        </select>
+        <input type="text" value={p.papel || ''} onChange={ev => onChange(idx, 'papel', ev.target.value)}
+          placeholder="Papel na atividade" className="input-field text-xs flex-1" />
         <button type="button" onClick={() => onRemove(idx)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={13} /></button>
       </div>
     )
@@ -493,7 +592,7 @@ export default function ProjetoDetalhePage() {
                           }))} className="text-[11px] text-orange-500 font-medium">+ Participante</button>
                         </div>
                         {editForm.participantes?.map((p: any, i: number) =>
-                          renderParticipanteEditRow(p, i,
+                          renderEntregaParticipanteEditRow(p, i, editForm.participantes,
                             (idx, f, v) => setEditForm((prev: any) => ({
                               ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
                             })),
@@ -561,15 +660,36 @@ export default function ProjetoDetalhePage() {
                                     className="input-field text-xs" placeholder="Nome" />
                                   <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
                                     className="input-field text-xs" placeholder="Descrição" />
+
+                                  {/* Data prevista */}
+                                  <div>
+                                    <label className="text-[10px] font-medium text-gray-500">Data prevista (opcional)</label>
+                                    <input type="date" value={editForm.data_prevista || ''}
+                                      max={editForm.entrega_data_final || undefined}
+                                      onChange={ev => {
+                                        const nd = ev.target.value
+                                        if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
+                                          alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+                                          return
+                                        }
+                                        setEditForm({ ...editForm, data_prevista: nd })
+                                      }}
+                                      className="input-field text-xs" />
+                                    {editForm.entrega_data_final && <span className="text-[9px] text-gray-400">Limite: {editForm.entrega_data_final}</span>}
+                                  </div>
+
                                   <div>
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] font-medium text-gray-500">Participantes</span>
-                                      <button type="button" onClick={() => setEditForm((prev: any) => ({
-                                        ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
-                                      }))} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
+                                      <button type="button" onClick={() => {
+                                        if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
+                                        setEditForm((prev: any) => ({
+                                          ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                                        }))
+                                      }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
                                     </div>
                                     {editForm.participantes?.map((p: any, i: number) =>
-                                      renderParticipanteEditRow(p, i,
+                                      renderAtividadeParticipanteEditRow(p, i, editForm.participantes, editForm.entrega_participantes || [],
                                         (idx, f, v) => setEditForm((prev: any) => ({
                                           ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
                                         })),
@@ -591,6 +711,12 @@ export default function ProjetoDetalhePage() {
                                   <div>
                                     <span className="text-xs font-semibold text-gray-700">{a.nome}</span>
                                     <p className="text-xs text-gray-500">{a.descricao}</p>
+                                    {a.data_prevista && (
+                                      <p className="text-[10px] text-gray-400 mt-0.5">
+                                        <Clock size={10} className="inline mr-1" />
+                                        {new Date(a.data_prevista + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                      </p>
+                                    )}
                                     {a.atividade_participantes?.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mt-1">
                                         {a.atividade_participantes.map((p: any) => (
@@ -603,7 +729,7 @@ export default function ProjetoDetalhePage() {
                                   </div>
                                   {canEdit && (
                                     <div className="flex gap-1.5 shrink-0 ml-2">
-                                      <button onClick={() => startEditAtividade(a)} className="text-gray-400 hover:text-orange-500"><Edit3 size={13} /></button>
+                                      <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500"><Edit3 size={13} /></button>
                                       <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
                                     </div>
                                   )}
