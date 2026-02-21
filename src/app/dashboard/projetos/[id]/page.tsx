@@ -83,7 +83,7 @@ export default function ProjetoDetalhePage() {
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
         entregas(id, nome, descricao, dependencias_criticas, data_final_prevista, status, motivo_status,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
-          atividades(id, nome, descricao, data_prevista,
+          atividades(id, nome, descricao, data_prevista, status, motivo_status,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
           )
         )`)
@@ -256,6 +256,7 @@ export default function ProjetoDetalhePage() {
   function startEditAtividade(a: any, entrega: any) {
     setEditForm({
       nome: a.nome, descricao: a.descricao, data_prevista: a.data_prevista || '',
+      status: a.status || 'aberta', motivo_status: a.motivo_status || '',
       entrega_data_final: entrega.data_final_prevista || '',
       entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
@@ -295,7 +296,8 @@ export default function ProjetoDetalhePage() {
 
     const { error } = await supabase.from('atividades').update({
       nome: editForm.nome, descricao: editForm.descricao,
-      data_prevista: editForm.data_prevista || null
+      data_prevista: editForm.data_prevista || null,
+      status: editForm.status, motivo_status: editForm.motivo_status || null
     }).eq('id', ativId)
     if (error) { alert(error.message); setSaving(false); return }
 
@@ -678,6 +680,21 @@ export default function ProjetoDetalhePage() {
                                     {editForm.entrega_data_final && <span className="text-[9px] text-gray-400">Limite: {editForm.entrega_data_final}</span>}
                                   </div>
 
+                                  {/* Status */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-medium text-gray-500">Status</label>
+                                      <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })} className="input-field text-xs">
+                                        {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium text-gray-500">Motivo do status</label>
+                                      <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                                        placeholder="Opcional" className="input-field text-xs" />
+                                    </div>
+                                  </div>
+
                                   <div>
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] font-medium text-gray-500">Participantes</span>
@@ -709,8 +726,18 @@ export default function ProjetoDetalhePage() {
                               ) : (
                                 <div className="flex items-start justify-between">
                                   <div>
-                                    <span className="text-xs font-semibold text-gray-700">{a.nome}</span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-semibold text-gray-700">{a.nome}</span>
+                                      {(() => {
+                                        const st = STATUS_ENTREGA[a.status] || STATUS_ENTREGA.aberta
+                                        return <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${st.bg} ${st.color}`}>{st.label}</span>
+                                      })()}
+                                      {a.data_prevista && a.status !== 'resolvida' && a.status !== 'cancelada' && new Date(a.data_prevista) < new Date(new Date().toDateString()) && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700">Atrasada</span>
+                                      )}
+                                    </div>
                                     <p className="text-xs text-gray-500">{a.descricao}</p>
+                                    {a.motivo_status && <p className="text-[10px] text-gray-400 italic">Motivo: {a.motivo_status}</p>}
                                     {a.data_prevista && (
                                       <p className="text-[10px] text-gray-400 mt-0.5">
                                         <Clock size={10} className="inline mr-1" />

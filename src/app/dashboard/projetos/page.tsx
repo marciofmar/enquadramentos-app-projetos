@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, ChevronRight, Building2 } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, ChevronRight, Building2, Activity } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 interface ProjetoCard {
@@ -15,8 +15,11 @@ interface ProjetoCard {
   setor_lider_nome: string
   acoes: { numero: string; nome: string; oe_codigo: string }[]
   setores_participantes: string[]
-  proxima_entrega: string | null
+  proxima_entrega: { nome: string; data: string } | null
+  proxima_atividade: { nome: string; data: string } | null
+  atividades_atrasadas: { nome: string; data: string }[]
   pontualidade: 'em_dia' | 'proximo' | 'atrasado'
+  tem_atividades_atrasadas: boolean
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -84,9 +87,10 @@ export default function ProjetosPage() {
       .select(`id, nome, descricao, setor_lider_id,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-        entregas(id, data_final_prevista, status,
+        entregas(id, nome, data_final_prevista, status,
           entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
-          atividades(atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
+          atividades(id, nome, data_prevista, status,
+            atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
         )`)
       .order('nome')
 
@@ -109,14 +113,13 @@ export default function ProjetosPage() {
           })
         })
 
-        // Calculate pontualidade
+        // Calculate pontualidade (entregas)
         const now = new Date()
         now.setHours(0, 0, 0, 0)
         const quinzena = new Date(now)
         quinzena.setDate(quinzena.getDate() + 15)
 
         let pontualidade: 'em_dia' | 'proximo' | 'atrasado' = 'em_dia'
-        let proximaEntrega: string | null = null
         const activeEntregas = (p.entregas || []).filter((e: any) =>
           e.status !== 'resolvida' && e.status !== 'cancelada' && e.data_final_prevista
         )
@@ -130,17 +133,40 @@ export default function ProjetosPage() {
         if (hasAtrasada) pontualidade = 'atrasado'
         else if (hasProxima) pontualidade = 'proximo'
 
-        // Próxima entrega
+        // Próxima entrega (com nome)
+        let proximaEntrega: { nome: string; data: string } | null = null
         const futuras = activeEntregas
           .filter((e: any) => new Date(e.data_final_prevista) >= now)
           .sort((a: any, b: any) => new Date(a.data_final_prevista).getTime() - new Date(b.data_final_prevista).getTime())
-        if (futuras.length > 0) proximaEntrega = futuras[0].data_final_prevista
+        if (futuras.length > 0) proximaEntrega = { nome: futuras[0].nome, data: futuras[0].data_final_prevista }
         else if (activeEntregas.length > 0) {
-          // All overdue, show most recent
           const sorted = [...activeEntregas].sort((a: any, b: any) =>
             new Date(b.data_final_prevista).getTime() - new Date(a.data_final_prevista).getTime())
-          proximaEntrega = sorted[0].data_final_prevista
+          proximaEntrega = { nome: sorted[0].nome, data: sorted[0].data_final_prevista }
         }
+
+        // Atividades: coletar todas de todas as entregas
+        const todasAtividades: any[] = []
+        p.entregas?.forEach((e: any) => {
+          e.atividades?.forEach((a: any) => { todasAtividades.push(a) })
+        })
+
+        const activeAtividades = todasAtividades.filter((a: any) =>
+          a.status !== 'resolvida' && a.status !== 'cancelada' && a.data_prevista
+        )
+
+        // Atividades atrasadas
+        const ativAtrasadas = activeAtividades
+          .filter((a: any) => new Date(a.data_prevista) < now)
+          .sort((a: any, b: any) => new Date(a.data_prevista).getTime() - new Date(b.data_prevista).getTime())
+          .map((a: any) => ({ nome: a.nome, data: a.data_prevista }))
+
+        // Próxima atividade
+        let proximaAtividade: { nome: string; data: string } | null = null
+        const ativFuturas = activeAtividades
+          .filter((a: any) => new Date(a.data_prevista) >= now)
+          .sort((a: any, b: any) => new Date(a.data_prevista).getTime() - new Date(b.data_prevista).getTime())
+        if (ativFuturas.length > 0) proximaAtividade = { nome: ativFuturas[0].nome, data: ativFuturas[0].data_prevista }
 
         return {
           id: p.id,
@@ -156,7 +182,10 @@ export default function ProjetosPage() {
           })),
           setores_participantes: Array.from(setorSet),
           proxima_entrega: proximaEntrega,
+          proxima_atividade: proximaAtividade,
+          atividades_atrasadas: ativAtrasadas,
           pontualidade,
+          tem_atividades_atrasadas: ativAtrasadas.length > 0,
         }
       })
       setProjetos(cards)
@@ -203,7 +232,7 @@ export default function ProjetosPage() {
       if (!a.proxima_entrega && !b.proxima_entrega) return 0
       if (!a.proxima_entrega) return 1
       if (!b.proxima_entrega) return -1
-      return new Date(a.proxima_entrega).getTime() - new Date(b.proxima_entrega).getTime()
+      return new Date(a.proxima_entrega.data).getTime() - new Date(b.proxima_entrega.data).getTime()
     })
     sorted.forEach(p => {
       const key = p.setor_lider_codigo
@@ -223,6 +252,11 @@ export default function ProjetosPage() {
     const year = d.getFullYear().toString().slice(-2)
     const q = d.getDate() <= 15 ? '1ª' : '2ª'
     return `${month}/${year} – ${q} quinz.`
+  }
+
+  function formatDate(dateStr: string) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('pt-BR')
   }
 
   if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
@@ -302,9 +336,16 @@ export default function ProjetosPage() {
                     <h3 className="text-sm font-semibold text-gray-800 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
                       {p.nome}
                     </h3>
-                    <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${pont.bg} ${pont.color}`}>
-                      <PontIcon size={11} /> {pont.label}
-                    </span>
+                    <div className="flex flex-col gap-1 shrink-0 items-end">
+                      <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${pont.bg} ${pont.color}`}>
+                        <PontIcon size={11} /> {pont.label}
+                      </span>
+                      {p.tem_atividades_atrasadas && (
+                        <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          <Activity size={10} /> {p.atividades_atrasadas.length} ativ. atrasada{p.atividades_atrasadas.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <p className="text-xs text-gray-500 line-clamp-2 mb-3">{p.descricao}</p>
@@ -329,10 +370,33 @@ export default function ProjetosPage() {
                         )}
                       </div>
                     )}
+
+                    {/* Próxima entrega com nome */}
                     {p.proxima_entrega && (
-                      <div className="flex items-center gap-1 text-[11px]">
-                        <Clock size={11} className="text-gray-400" />
-                        Próx. entrega: <span className="font-medium">{formatQuinzena(p.proxima_entrega)}</span>
+                      <div className="flex items-start gap-1 text-[11px]">
+                        <Clock size={11} className="text-gray-400 mt-0.5 shrink-0" />
+                        <span>Próx. entrega: <span className="font-medium">{p.proxima_entrega.nome}</span> — {formatQuinzena(p.proxima_entrega.data)}</span>
+                      </div>
+                    )}
+
+                    {/* Próxima atividade */}
+                    {p.proxima_atividade && (
+                      <div className="flex items-start gap-1 text-[11px]">
+                        <Activity size={11} className="text-gray-400 mt-0.5 shrink-0" />
+                        <span>Próx. atividade: <span className="font-medium">{p.proxima_atividade.nome}</span> — {formatDate(p.proxima_atividade.data)}</span>
+                      </div>
+                    )}
+
+                    {/* Atividades atrasadas - expandem no hover */}
+                    {p.atividades_atrasadas.length > 0 && (
+                      <div className="hidden group-hover:block">
+                        <div className="text-[10px] font-semibold text-red-600 mt-1 mb-0.5">Atividades atrasadas:</div>
+                        {p.atividades_atrasadas.slice(0, 5).map((aa, i) => (
+                          <div key={i} className="text-[10px] text-red-500 pl-2">• {aa.nome} — {formatDate(aa.data)}</div>
+                        ))}
+                        {p.atividades_atrasadas.length > 5 && (
+                          <div className="text-[10px] text-red-400 pl-2">+{p.atividades_atrasadas.length - 5} mais</div>
+                        )}
                       </div>
                     )}
                   </div>
