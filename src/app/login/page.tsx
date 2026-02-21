@@ -44,8 +44,13 @@ export default function LoginPage() {
       })
       if (signUpError) {
         setError(signUpError.message)
+      } else if (signUpData.session) {
+        // Confirmação de email desabilitada — já logado
+        router.push('/dashboard')
+        router.refresh()
       } else {
-        setMessage('Conta criada. Verifique seu email para confirmar o cadastro.')
+        // Confirmação de email habilitada — aguardar verificação
+        setMessage('Conta criada com sucesso! Verifique seu email para confirmar o cadastro.')
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
