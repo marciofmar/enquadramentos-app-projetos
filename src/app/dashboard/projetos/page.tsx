@@ -259,40 +259,30 @@ export default function ProjetosPage() {
     return d.toLocaleDateString('pt-BR')
   }
 
-  if (loading) return (
-    <div>
-      <div className="skeleton h-8 w-56 mb-2" />
-      <div className="skeleton h-4 w-80 mb-6" />
-      <div className="flex gap-3 mb-6">{[1,2,3,4].map(i => <div key={i} className="skeleton h-16 w-28 rounded-xl" />)}</div>
-      <div className="skeleton h-14 w-full rounded-xl mb-6" />
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {[1,2,3].map(i => <div key={i} className="skeleton-card"><div className="skeleton h-5 w-40" /><div className="skeleton-text" /><div className="skeleton-text-sm" /></div>)}
-      </div>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 tracking-tight flex items-center gap-2">
-            <FolderKanban size={22} className="text-orange-500" /> Gestão de Projetos
+          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <FolderKanban size={24} className="text-orange-500" /> Gestão de Projetos
           </h1>
-          <p className="text-gray-400 text-sm mt-0.5">Projetos vinculados às Ações Estratégicas Prioritárias</p>
+          <p className="text-gray-500 text-sm mt-1">Projetos vinculados às Ações Estratégicas Prioritárias</p>
         </div>
         {canCreate && (
           <button onClick={() => router.push('/dashboard/projetos/novo')}
-            className="btn-orange flex items-center gap-2">
-            <Plus size={16} /> <span className="hidden sm:inline">Novo projeto</span>
+            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
+            <Plus size={18} /> Novo projeto
           </button>
         )}
       </div>
 
-      {/* KPI bar */}
+      {/* Painel consolidado */}
       <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
-        <div className="kpi-pill">
-          <span className="kpi-pill-value text-sedec-600">{projetos.length}</span>
-          <span className="kpi-pill-label">Projetos</span>
+        <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-gray-200 min-w-[100px]">
+          <span className="text-2xl font-bold text-sedec-600 leading-none">{projetos.length}</span>
+          <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Projetos</span>
         </div>
         {(() => {
           const atrasados = projetos.filter(p => p.pontualidade === 'atrasado').length
@@ -300,34 +290,34 @@ export default function ProjetosPage() {
           const emDia = projetos.filter(p => p.pontualidade === 'em_dia').length
           const comAtivAtrasadas = projetos.filter(p => p.tem_atividades_atrasadas).length
           return <>
-            {emDia > 0 && <div className="kpi-pill border-green-100">
-              <span className="kpi-pill-value text-green-600">{emDia}</span>
-              <span className="kpi-pill-label">Em dia</span>
+            {emDia > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-green-200 min-w-[100px]">
+              <span className="text-2xl font-bold text-green-600 leading-none">{emDia}</span>
+              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Em dia</span>
             </div>}
-            {proximos > 0 && <div className="kpi-pill border-yellow-100">
-              <span className="kpi-pill-value text-yellow-600">{proximos}</span>
-              <span className="kpi-pill-label">Próx. do prazo</span>
+            {proximos > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-yellow-200 min-w-[100px]">
+              <span className="text-2xl font-bold text-yellow-600 leading-none">{proximos}</span>
+              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Próx. do prazo</span>
             </div>}
-            {atrasados > 0 && <div className="kpi-pill border-red-100 bg-red-50/50">
-              <span className="kpi-pill-value text-red-600">{atrasados}</span>
-              <span className="kpi-pill-label">Atrasados</span>
+            {atrasados > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-red-50 border border-red-200 min-w-[100px]">
+              <span className="text-2xl font-bold text-red-600 leading-none">{atrasados}</span>
+              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Atrasados</span>
             </div>}
-            {comAtivAtrasadas > 0 && <div className="kpi-pill border-red-100">
-              <span className="kpi-pill-value text-red-500">{comAtivAtrasadas}</span>
-              <span className="kpi-pill-label">C/ ativ. atrasada</span>
+            {comAtivAtrasadas > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-red-200 min-w-[100px]">
+              <span className="text-2xl font-bold text-red-500 leading-none">{comAtivAtrasadas}</span>
+              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">C/ ativ. atrasada</span>
             </div>}
           </>
         })()}
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200/80 p-4 mb-6">
-        <div className="flex items-center gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-          <Filter size={14} /> Filtros
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+          <Filter size={16} /> Filtros
           {hasFilters && (
             <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter('') }}
-              className="ml-auto text-xs text-red-400 hover:text-red-600 flex items-center gap-1 normal-case tracking-normal">
-              <X size={13} /> Limpar
+              className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+              <X size={14} /> Limpar
             </button>
           )}
         </div>

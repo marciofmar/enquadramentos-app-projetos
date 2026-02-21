@@ -161,25 +161,9 @@ export default function AcaoPage() {
   }
 
   if (loading) {
-    return (
-      <div>
-        <div className="skeleton h-4 w-32 mb-4" />
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-          <div className="h-1 bg-gradient-to-r from-orange-500 via-orange-400 to-yellow-500" />
-          <div className="p-6 space-y-3">
-            <div className="skeleton h-7 w-24" />
-            <div className="skeleton h-5 w-96" />
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <div className="skeleton h-16 rounded-lg" />
-              <div className="skeleton h-16 rounded-lg" />
-            </div>
-          </div>
-        </div>
-        {[1, 2, 3].map(i => (
-          <div key={i} className="skeleton h-12 w-full rounded-xl mb-3" />
-        ))}
-      </div>
-    )
+    return <div className="flex items-center justify-center py-20">
+      <div className="animate-pulse text-sedec-500">Carregando...</div>
+    </div>
   }
 
   if (!acao) {
@@ -200,8 +184,8 @@ export default function AcaoPage() {
     <div>
       {/* Back button */}
       <button onClick={() => router.push('/dashboard')}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-5 transition-colors">
-        <ArrowLeft size={15} /> Voltar às ações
+        className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
+        <ArrowLeft size={16} /> Voltar às ações
       </button>
 
       {/* Header */}

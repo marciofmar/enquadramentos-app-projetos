@@ -374,23 +374,13 @@ export default function NovoProjetoPage() {
     removeParticipanteEntrega(eIdx, pIdx)
   }
 
-  if (loading) return (
-    <div>
-      <div className="skeleton h-4 w-32 mb-5" />
-      <div className="skeleton h-8 w-48 mb-6" />
-      <div className="space-y-4">
-        <div className="skeleton h-12 w-full rounded-lg" />
-        <div className="skeleton h-12 w-full rounded-lg" />
-        <div className="skeleton h-24 w-full rounded-lg" />
-      </div>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
 
   return (
     <div className="max-w-4xl mx-auto">
       <button onClick={() => router.push('/dashboard/projetos')}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-5 transition-colors">
-        <ArrowLeft size={15} /> Voltar aos projetos
+        className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
+        <ArrowLeft size={16} /> Voltar aos projetos
       </button>
 
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Novo Projeto</h1>
@@ -595,7 +585,7 @@ export default function NovoProjetoPage() {
           <button type="button" onClick={() => router.push('/dashboard/projetos')}
             className="px-4 py-2.5 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
           <button onClick={handleSave} disabled={saving}
-            className="btn-orange flex items-center gap-2 px-6">
+            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
             <Save size={16} /> {saving ? 'Salvando...' : 'Criar projeto'}
           </button>
         </div>
