@@ -407,7 +407,23 @@ export default function ProjetoDetalhePage() {
     )
   }
 
-  if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
+  if (loading) return (
+    <div>
+      <div className="skeleton h-4 w-32 mb-5" />
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="skeleton h-7 w-64" />
+          <div className="skeleton h-6 w-20 rounded-full" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="skeleton h-20 rounded-lg" />
+          <div className="skeleton h-20 rounded-lg" />
+        </div>
+      </div>
+      <div className="skeleton h-48 w-full rounded-xl mb-4" />
+      {[1, 2].map(i => <div key={i} className="skeleton h-24 w-full rounded-xl mb-3" />)}
+    </div>
+  )
   if (!projeto) return <div className="text-center py-20 text-gray-400">Projeto não encontrado.</div>
 
   const pont = PONT_CONFIG[pontualidade]
@@ -416,8 +432,8 @@ export default function ProjetoDetalhePage() {
   return (
     <div>
       <button onClick={() => router.push('/dashboard/projetos')}
-        className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
-        <ArrowLeft size={16} /> Voltar aos projetos
+        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-5 transition-colors">
+        <ArrowLeft size={15} /> Voltar aos projetos
       </button>
 
       {/* Header do projeto */}

@@ -72,8 +72,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-14 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-white">Enquadramentos Estratégicos</h1>
-          <p className="text-gray-400 mt-1 text-sm">Plano Estratégico 2024–2035 • ICTDEC / DAEAD</p>
+          <h1 className="text-xl font-bold text-white tracking-tight">Planejamento Estratégico</h1>
+          <p className="text-gray-500 mt-1 text-sm">SEDEC-RJ 2024–2035 • ICTDEC / DAEAD</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-8 space-y-5">
@@ -160,7 +160,7 @@ export default function LoginPage() {
             <div className="bg-green-50 text-green-700 text-sm px-4 py-3 rounded-lg">{message}</div>
           )}
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
+          <button type="submit" disabled={loading} className="btn-orange w-full">
             {loading ? 'Aguarde...' : isSignUp ? 'Criar conta' : 'Entrar'}
           </button>
 

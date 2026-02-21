@@ -141,8 +141,19 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-sedec-500 font-medium">Carregando ações estratégicas...</div>
+      <div>
+        <div className="skeleton h-8 w-72 mb-2" />
+        <div className="skeleton h-4 w-96 mb-8" />
+        <div className="skeleton h-14 w-full rounded-xl mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="skeleton-card">
+              <div className="skeleton h-5 w-20" />
+              <div className="skeleton-text" />
+              <div className="skeleton-text-sm" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -150,25 +161,47 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Ações Estratégicas Prioritárias</h1>
-        <p className="text-gray-500 text-sm mt-1">Enquadramentos Estratégicos Setoriais — Exercício 2026</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 tracking-tight">Ações Estratégicas Prioritárias</h1>
+        <p className="text-gray-400 text-sm mt-0.5">Enquadramentos Estratégicos Setoriais — Exercício 2026</p>
+      </div>
+
+      {/* KPI bar */}
+      <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
+        <div className="kpi-pill">
+          <span className="kpi-pill-value text-sedec-600">{acoes.length}</span>
+          <span className="kpi-pill-label">Ações totais</span>
+        </div>
+        <div className="kpi-pill">
+          <span className="kpi-pill-value text-blue-600">{eixos.length}</span>
+          <span className="kpi-pill-label">Eixos</span>
+        </div>
+        <div className="kpi-pill">
+          <span className="kpi-pill-value text-amber-600">{oes.length}</span>
+          <span className="kpi-pill-label">Objetivos</span>
+        </div>
+        {hasFilters && (
+          <div className="kpi-pill border-orange-200 bg-orange-50">
+            <span className="kpi-pill-value text-orange-600">{filtered.length}</span>
+            <span className="kpi-pill-label text-orange-500">Filtradas</span>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
-          <Filter size={16} />
+      <div className="bg-white rounded-xl border border-gray-200/80 p-4 mb-6">
+        <div className="flex items-center gap-2 text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+          <Filter size={14} />
           Filtros
           {hasFilters && (
-            <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
-              <X size={14} /> Limpar filtros
+            <button onClick={clearFilters} className="ml-auto text-xs text-red-400 hover:text-red-600 flex items-center gap-1 normal-case tracking-normal">
+              <X size={13} /> Limpar
             </button>
           )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Buscar por número ou nome..."
@@ -201,21 +234,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Results count */}
-      <div className="text-sm text-gray-500 mb-4">
-        {filtered.length} de {acoes.length} ações
-        {hasFilters && ' (filtradas)'}
-      </div>
-
       {/* Cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
         {filtered.map(acao => (
           <button
             key={acao.id}
             onClick={() => router.push(`/dashboard/acao/${acao.numero}`)}
-            className="card p-5 text-left group hover:border-orange-300 transition-colors"
+            className="card p-5 text-left group hover:border-orange-300/60 relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-orange-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-xl" />
+            <div className="absolute top-0 left-0 w-1 h-full bg-orange-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-l-xl" />
             <div className="flex items-start justify-between mb-3">
               <span className="text-lg font-bold text-sedec-600">AE {acao.numero}</span>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${eixoColor(acao.eixo)}`}>

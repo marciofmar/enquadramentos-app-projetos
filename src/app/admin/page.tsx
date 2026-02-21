@@ -26,7 +26,14 @@ export default function AdminPage() {
     check()
   }, [])
 
-  if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
+  if (loading) return (
+    <div>
+      <div className="skeleton h-4 w-32 mb-4" />
+      <div className="skeleton h-8 w-48 mb-6" />
+      <div className="flex gap-2 mb-6">{[1,2,3,4,5].map(i => <div key={i} className="skeleton h-10 w-32 rounded-lg" />)}</div>
+      <div className="skeleton h-64 w-full rounded-xl" />
+    </div>
+  )
 
   const tabs = [
     { key: 'observacoes' as const, label: 'Observações', icon: MessageSquare },
@@ -38,8 +45,8 @@ export default function AdminPage() {
 
   return (
     <div>
-      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
-        <ArrowLeft size={16} /> Voltar ao painel
+      <button onClick={() => router.push('/dashboard')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-4 transition-colors">
+        <ArrowLeft size={15} /> Voltar ao painel
       </button>
 
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Administração</h1>
@@ -47,10 +54,12 @@ export default function AdminPage() {
       <div className="flex gap-2 mb-6 flex-wrap">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.key ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+              tab === t.key
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-700'
             }`}>
-            <t.icon size={16} /> {t.label}
+            <t.icon size={15} /> {t.label}
           </button>
         ))}
       </div>
