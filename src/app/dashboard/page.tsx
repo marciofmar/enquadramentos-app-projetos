@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { Search, Filter, X, ChevronRight, Layers, Target, Compass } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Search, Filter, X, ChevronRight, Target, Compass, Star, Users2 } from 'lucide-react'
 
 interface AcaoCard {
   id: number
@@ -12,6 +12,17 @@ interface AcaoCard {
   eixo: string
   oe: string
   estrategia: string
+}
+
+// Ordena números de ação como numéricos: 1.1.3, 2.1.1, ..., 10.1.2
+function compareNumero(a: string, b: string): number {
+  const partsA = a.split('.').map(Number)
+  const partsB = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const diff = (partsA[i] || 0) - (partsB[i] || 0)
+    if (diff !== 0) return diff
+  }
+  return 0
 }
 
 export default function DashboardPage() {
@@ -23,10 +34,35 @@ export default function DashboardPage() {
   const [eixoFilter, setEixoFilter] = useState('')
   const [oeFilter, setOeFilter] = useState('')
   const [search, setSearch] = useState('')
-  const [setorAcoes, setSetorAcoes] = useState<Record<string, number[]>>({})
+  // Mapa: setor_codigo → { especifico: [acao_ids], conjunto: [acao_ids] }
+  const [setorAcoes, setSetorAcoes] = useState<Record<string, { especifico: number[]; conjunto: number[] }>>({})
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Inicializa filtros a partir da URL (restaura estado ao voltar)
+  useEffect(() => {
+    const s = searchParams.get('setor')
+    const e = searchParams.get('eixo')
+    const o = searchParams.get('oe')
+    const q = searchParams.get('q')
+    if (s) setSetorFilter(s)
+    if (e) setEixoFilter(e)
+    if (o) setOeFilter(o)
+    if (q) setSearch(q)
+  }, [])
+
+  // Monta query string com filtros ativos (para navegação)
+  function buildFilterParams(): string {
+    const params = new URLSearchParams()
+    if (setorFilter) params.set('setor', setorFilter)
+    if (eixoFilter) params.set('eixo', eixoFilter)
+    if (oeFilter) params.set('oe', oeFilter)
+    if (search) params.set('q', search)
+    const qs = params.toString()
+    return qs ? `?${qs}` : ''
+  }
 
   useEffect(() => {
     async function load() {
@@ -37,17 +73,19 @@ export default function DashboardPage() {
           eixo_prioritario:eixo_prioritario_id(codigo, nome),
           objetivo_estrategico:objetivo_estrategico_id(codigo, nome),
           estrategia:estrategia_id(codigo, nome)`)
-        .order('numero')
 
       if (acoesData) {
-        setAcoes(acoesData.map((a: any) => ({
-          id: a.id,
-          numero: a.numero,
-          nome: a.nome,
-          eixo: a.eixo_prioritario?.nome || '',
-          oe: a.objetivo_estrategico?.nome || '',
-          estrategia: a.estrategia?.nome || '',
-        })))
+        const sorted = acoesData
+          .map((a: any) => ({
+            id: a.id,
+            numero: a.numero,
+            nome: a.nome,
+            eixo: a.eixo_prioritario?.nome || '',
+            oe: a.objetivo_estrategico?.nome || '',
+            estrategia: a.estrategia?.nome || '',
+          }))
+          .sort((a, b) => compareNumero(a.numero, b.numero))
+        setAcoes(sorted)
       }
 
       // Load filters data
@@ -60,26 +98,39 @@ export default function DashboardPage() {
       const { data: oesData } = await supabase.from('objetivos_estrategicos').select('codigo, nome').order('codigo')
       if (oesData) setOes(oesData)
 
-      // Load setor-acao mapping for filtering
+      // Load setor-acao mapping WITH tipo_participacao for grouping
       const { data: fsData } = await supabase
         .from('ficha_setores')
-        .select('setor_id, fichas!inner(acao_estrategica_id)')
+        .select('setor_id, tipo_participacao, fichas!inner(acao_estrategica_id)')
 
       if (fsData) {
         const { data: setoresAll } = await supabase.from('setores').select('id, codigo')
-        const setorMap: Record<number, string> = {}
-        setoresAll?.forEach((s: any) => { setorMap[s.id] = s.codigo })
+        const setorIdMap: Record<number, string> = {}
+        setoresAll?.forEach((s: any) => { setorIdMap[s.id] = s.codigo })
 
-        const map: Record<string, Set<number>> = {}
+        const ESPECIFICO = new Set(['principal', 'coordenador'])
+
+        // Para cada setor, monta sets separados
+        const map: Record<string, { especifico: Set<number>; conjunto: Set<number> }> = {}
         fsData.forEach((fs: any) => {
-          const cod = setorMap[fs.setor_id]
-          if (cod) {
-            if (!map[cod]) map[cod] = new Set()
-            map[cod].add((fs.fichas as any).acao_estrategica_id)
+          const cod = setorIdMap[fs.setor_id]
+          if (!cod) return
+          if (!map[cod]) map[cod] = { especifico: new Set(), conjunto: new Set() }
+          const acaoId = (fs.fichas as any).acao_estrategica_id
+          if (ESPECIFICO.has(fs.tipo_participacao)) {
+            map[cod].especifico.add(acaoId)
+          } else {
+            map[cod].conjunto.add(acaoId)
           }
         })
-        const result: Record<string, number[]> = {}
-        for (const [k, v] of Object.entries(map)) result[k] = Array.from(v)
+
+        // Converte Sets para arrays; remove da lista "conjunto" ações já em "especifico"
+        const result: Record<string, { especifico: number[]; conjunto: number[] }> = {}
+        for (const [k, v] of Object.entries(map)) {
+          const especificoArr = Array.from(v.especifico)
+          const conjuntoArr = Array.from(v.conjunto).filter(id => !v.especifico.has(id))
+          result[k] = { especifico: especificoArr, conjunto: conjuntoArr }
+        }
         setSetorAcoes(result)
       }
 
@@ -88,7 +139,8 @@ export default function DashboardPage() {
     load()
   }, [])
 
-  const filtered = useMemo(() => {
+  // Aplica filtros de busca, eixo e OE (sem setor — setor é tratado na renderização)
+  const baseFiltered = useMemo(() => {
     let result = acoes
 
     if (search) {
@@ -106,21 +158,38 @@ export default function DashboardPage() {
       result = result.filter(a => a.oe.includes(oeFilter))
     }
 
-    if (setorFilter) {
-      const ids = setorAcoes[setorFilter] || []
-      result = result.filter(a => ids.includes(a.id))
+    return result
+  }, [acoes, search, eixoFilter, oeFilter])
+
+  // Quando tem filtro de setor: separa em 2 grupos
+  // Quando não tem: retorna lista plana
+  const { grouped, flat } = useMemo(() => {
+    if (!setorFilter) {
+      return { grouped: null, flat: baseFiltered }
     }
 
-    return result
-  }, [acoes, search, eixoFilter, oeFilter, setorFilter, setorAcoes])
+    const mapping = setorAcoes[setorFilter]
+    if (!mapping) {
+      return { grouped: { especifico: [], conjunto: [] }, flat: null }
+    }
 
+    const especifico = baseFiltered
+      .filter(a => mapping.especifico.includes(a.id))
+      .sort((a, b) => compareNumero(a.numero, b.numero))
+    const conjunto = baseFiltered
+      .filter(a => mapping.conjunto.includes(a.id))
+      .sort((a, b) => compareNumero(a.numero, b.numero))
+
+    return { grouped: { especifico, conjunto }, flat: null }
+  }, [baseFiltered, setorFilter, setorAcoes])
+
+  const totalFiltered = flat ? flat.length : (grouped ? grouped.especifico.length + grouped.conjunto.length : 0)
   const hasFilters = search || eixoFilter || oeFilter || setorFilter
 
   function clearFilters() {
     setSearch(''); setEixoFilter(''); setOeFilter(''); setSetorFilter('')
   }
 
-  // Extract eixo short name
   function eixoShort(nome: string) {
     const m = nome.match(/EIXO\s*(\d+)/)
     return m ? `Eixo ${m[1]}` : nome.substring(0, 15)
@@ -137,6 +206,44 @@ export default function DashboardPage() {
       '5': 'bg-rose-100 text-rose-700',
     }
     return colors[m[1]] || 'bg-gray-100 text-gray-700'
+  }
+
+  function renderCard(acao: AcaoCard, subtle?: boolean) {
+    return (
+      <button
+        key={acao.id}
+        onClick={() => router.push(`/dashboard/acao/${acao.numero}${buildFilterParams()}`)}
+        className={`card p-5 text-left group hover:border-orange-300 transition-colors ${subtle ? 'opacity-70 border-dashed' : ''}`}
+      >
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-orange-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-xl" />
+        <div className="flex items-start justify-between mb-3">
+          <span className="text-lg font-bold text-sedec-600">AE {acao.numero}</span>
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${eixoColor(acao.eixo)}`}>
+            {eixoShort(acao.eixo)}
+          </span>
+        </div>
+
+        <h3 className="text-sm font-semibold text-gray-800 mb-3 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
+          {acao.nome}
+        </h3>
+
+        <div className="space-y-1.5 text-xs text-gray-500">
+          <div className="flex items-start gap-1.5">
+            <Target size={12} className="mt-0.5 shrink-0 text-gray-400" />
+            <span className="line-clamp-1">{acao.oe}</span>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <Compass size={12} className="mt-0.5 shrink-0 text-gray-400" />
+            <span className="line-clamp-1">{acao.estrategia}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center text-xs text-orange-600 font-medium group-hover:text-orange-700">
+          Ver enquadramento completo
+          <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </button>
+    )
   }
 
   if (loading) {
@@ -203,50 +310,71 @@ export default function DashboardPage() {
 
       {/* Results count */}
       <div className="text-sm text-gray-500 mb-4">
-        {filtered.length} de {acoes.length} ações
+        {totalFiltered} de {acoes.length} ações
         {hasFilters && ' (filtradas)'}
       </div>
 
-      {/* Cards grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
-        {filtered.map(acao => (
-          <button
-            key={acao.id}
-            onClick={() => router.push(`/dashboard/acao/${acao.numero}`)}
-            className="card p-5 text-left group hover:border-orange-300 transition-colors"
-          >
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-orange-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-xl" />
-            <div className="flex items-start justify-between mb-3">
-              <span className="text-lg font-bold text-sedec-600">AE {acao.numero}</span>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${eixoColor(acao.eixo)}`}>
-                {eixoShort(acao.eixo)}
-              </span>
-            </div>
+      {/* === SEM FILTRO DE SETOR: lista plana === */}
+      {flat && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+          {flat.map(acao => renderCard(acao))}
+        </div>
+      )}
 
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
-              {acao.nome}
-            </h3>
-
-            <div className="space-y-1.5 text-xs text-gray-500">
-              <div className="flex items-start gap-1.5">
-                <Target size={12} className="mt-0.5 shrink-0 text-gray-400" />
-                <span className="line-clamp-1">{acao.oe}</span>
+      {/* === COM FILTRO DE SETOR: 2 grupos === */}
+      {grouped && (
+        <div className="space-y-8">
+          {/* Grupo 1: Participação específica */}
+          {grouped.especifico.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-1 pb-2 border-b-2 border-orange-300">
+                <Star size={16} className="text-orange-500" />
+                <h2 className="text-sm font-bold text-gray-700">
+                  Participação específica
+                </h2>
+                <span className="text-xs text-gray-400 ml-1">
+                  {grouped.especifico.length} {grouped.especifico.length === 1 ? 'ação' : 'ações'}
+                </span>
               </div>
-              <div className="flex items-start gap-1.5">
-                <Compass size={12} className="mt-0.5 shrink-0 text-gray-400" />
-                <span className="line-clamp-1">{acao.estrategia}</span>
+              <p className="text-xs text-gray-400 mb-3">
+                O setor possui ficha própria com papel, contribuição e escopo definidos.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+                {grouped.especifico.map(acao => renderCard(acao))}
               </div>
             </div>
+          )}
 
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center text-xs text-orange-600 font-medium group-hover:text-orange-700">
-              Ver enquadramento completo
-              <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
+          {/* Grupo 2: Participação em conjunto */}
+          {grouped.conjunto.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-1 pb-2 border-b-2 border-gray-300">
+                <Users2 size={16} className="text-gray-400" />
+                <h2 className="text-sm font-bold text-gray-500">
+                  Participação em conjunto
+                </h2>
+                <span className="text-xs text-gray-400 ml-1">
+                  {grouped.conjunto.length} {grouped.conjunto.length === 1 ? 'ação' : 'ações'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">
+                O setor participa dentro de um grupo mais amplo (apoio, validação ou atuação passiva).
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+                {grouped.conjunto.map(acao => renderCard(acao, true))}
+              </div>
             </div>
-          </button>
-        ))}
-      </div>
+          )}
 
-      {filtered.length === 0 && (
+          {grouped.especifico.length === 0 && grouped.conjunto.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              Nenhuma ação encontrada para este setor com os filtros aplicados.
+            </div>
+          )}
+        </div>
+      )}
+
+      {flat && flat.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           Nenhuma ação encontrada com os filtros aplicados.
         </div>

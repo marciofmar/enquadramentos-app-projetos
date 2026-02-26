@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Check, X, MessageSquare, Users, FileEdit, Save, ChevronDown, ChevronUp, ExternalLink, Settings, History } from 'lucide-react'
+import { ArrowLeft, Check, X, MessageSquare, Users, FileEdit, Save, ChevronDown, ChevronUp, ExternalLink, Settings, History, Building2, Plus, AlertTriangle, ArrowRight, Edit3, Trash2 } from 'lucide-react'
 import { STATUS_CONFIG, BLOCO_LABELS } from '@/lib/utils'
 import type { Profile } from '@/lib/types'
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<'observacoes' | 'conteudo' | 'usuarios' | 'config' | 'log'>('observacoes')
+  const [tab, setTab] = useState<'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'log'>('observacoes')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -32,6 +32,7 @@ export default function AdminPage() {
     { key: 'observacoes' as const, label: 'Observações', icon: MessageSquare },
     { key: 'conteudo' as const, label: 'Editar Conteúdo', icon: FileEdit },
     { key: 'usuarios' as const, label: 'Usuários', icon: Users },
+    { key: 'setores' as const, label: 'Setores', icon: Building2 },
     { key: 'config' as const, label: 'Configurações', icon: Settings },
     { key: 'log' as const, label: 'Log de Alterações', icon: History },
   ]
@@ -58,6 +59,7 @@ export default function AdminPage() {
       {tab === 'observacoes' && <ObservacoesAdmin />}
       {tab === 'conteudo' && <ConteudoAdmin />}
       {tab === 'usuarios' && <UsuariosAdmin />}
+      {tab === 'setores' && <SetoresAdmin />}
       {tab === 'config' && <ConfiguracoesAdmin />}
       {tab === 'log' && <AuditLogAdmin />}
     </div>
@@ -815,6 +817,336 @@ function ConfiguracoesAdmin() {
         <p className="text-xs text-amber-700 leading-relaxed">
           <span className="font-semibold">Nota:</span> Estas configurações têm efeito imediato. 
           Usuários que estiverem com a página aberta verão a mudança ao navegar para outra página ou recarregar.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// GESTÃO DE SETORES
+// ============================================================
+
+interface SetorRow {
+  id: number
+  codigo: string
+  nome_completo: string
+  created_at: string
+  _deps?: { profiles: number; projetos: number; entrega_participantes: number; atividade_participantes: number; panoramico_setores: number; ficha_setores: number; total: number }
+}
+
+function SetoresAdmin() {
+  const [setores, setSetores] = useState<SetorRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // Formulário de criação/edição
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [formCodigo, setFormCodigo] = useState('')
+  const [formNome, setFormNome] = useState('')
+
+  // Modal de exclusão
+  const [deleteTarget, setDeleteTarget] = useState<SetorRow | null>(null)
+  const [transferToId, setTransferToId] = useState<string>('')
+  const [checkingDeps, setCheckingDeps] = useState(false)
+
+  const supabase = createClient()
+
+  useEffect(() => { loadSetores() }, [])
+
+  async function loadSetores() {
+    setLoading(true)
+    const { data } = await supabase.from('setores').select('*').order('codigo')
+    if (data) {
+      // Carrega dependências para cada setor
+      const withDeps = await Promise.all(data.map(async (s: any) => {
+        const { data: deps } = await supabase.rpc('check_setor_dependencies', { p_setor_id: s.id })
+        return { ...s, _deps: deps }
+      }))
+      setSetores(withDeps)
+    }
+    setLoading(false)
+  }
+
+  function startCreate() {
+    setEditingId(null)
+    setFormCodigo('')
+    setFormNome('')
+    setShowForm(true)
+  }
+
+  function startEdit(s: SetorRow) {
+    setEditingId(s.id)
+    setFormCodigo(s.codigo)
+    setFormNome(s.nome_completo)
+    setShowForm(true)
+  }
+
+  function cancelForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setFormCodigo('')
+    setFormNome('')
+  }
+
+  async function saveSetor() {
+    if (!formCodigo.trim() || !formNome.trim()) {
+      alert('Código e nome são obrigatórios.')
+      return
+    }
+
+    setSaving(true)
+
+    if (editingId) {
+      // Edição
+      const { error } = await supabase.from('setores')
+        .update({ codigo: formCodigo.trim().toUpperCase(), nome_completo: formNome.trim() })
+        .eq('id', editingId)
+
+      if (error) {
+        alert(`Erro ao salvar: ${error.message}`)
+        setSaving(false)
+        return
+      }
+    } else {
+      // Criação
+      const { error } = await supabase.from('setores')
+        .insert({ codigo: formCodigo.trim().toUpperCase(), nome_completo: formNome.trim() })
+
+      if (error) {
+        if (error.message.includes('unique') || error.message.includes('duplicate')) {
+          alert('Já existe um setor com esse código.')
+        } else {
+          alert(`Erro ao criar: ${error.message}`)
+        }
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+    cancelForm()
+    loadSetores()
+  }
+
+  async function startDelete(s: SetorRow) {
+    setDeleteTarget(s)
+    setTransferToId('')
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const deps = deleteTarget._deps
+
+    if (deps && deps.total > 0 && !transferToId) {
+      alert('Este setor possui dependências. Selecione um setor de destino para transferi-las.')
+      return
+    }
+
+    setSaving(true)
+
+    const { data, error } = await supabase.rpc('admin_delete_setor', {
+      p_setor_id: deleteTarget.id,
+      p_transfer_to_id: deps && deps.total > 0 ? parseInt(transferToId) : null
+    })
+
+    if (error) {
+      alert(`Erro ao excluir: ${error.message}`)
+      setSaving(false)
+      return
+    }
+
+    if (data && !data.success) {
+      alert('Não foi possível excluir. Verifique as dependências.')
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
+    setDeleteTarget(null)
+    loadSetores()
+  }
+
+  const depLabels: Record<string, string> = {
+    profiles: 'Usuários vinculados',
+    projetos: 'Projetos como líder',
+    entrega_participantes: 'Participações em entregas',
+    atividade_participantes: 'Participações em atividades',
+    panoramico_setores: 'Quadros panorâmicos',
+    ficha_setores: 'Fichas de enquadramento',
+  }
+
+  if (loading) return <div className="animate-pulse text-sedec-500 py-8 text-center">Carregando setores...</div>
+
+  return (
+    <div className="max-w-4xl">
+      {/* Header + botão novo */}
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{setores.length} setor(es) cadastrado(s)</p>
+        <button onClick={startCreate}
+          className="flex items-center gap-1.5 text-sm bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
+          <Plus size={16} /> Novo setor
+        </button>
+      </div>
+
+      {/* Formulário de criação/edição */}
+      {showForm && (
+        <div className="bg-blue-50 border border-blue-300 rounded-xl p-4 mb-4 space-y-3">
+          <h3 className="text-sm font-bold text-gray-700">
+            {editingId ? 'Editar setor' : 'Novo setor'}
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Código (sigla)</label>
+              <input type="text" value={formCodigo}
+                onChange={e => setFormCodigo(e.target.value.toUpperCase())}
+                placeholder="Ex: ICTDEC"
+                className="input-field text-sm uppercase" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-gray-500 block mb-1">Nome completo</label>
+              <input type="text" value={formNome}
+                onChange={e => setFormNome(e.target.value)}
+                placeholder="Ex: Instituto Científico e Tecnológico de Defesa Civil"
+                className="input-field text-sm" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveSetor} disabled={saving}
+              className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50">
+              <Save size={13} /> {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button onClick={cancelForm}
+              className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5">
+              <X size={13} /> Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de setores */}
+      <div className="space-y-2">
+        {setores.map(s => {
+          const deps = s._deps
+          const hasDeps = deps && deps.total > 0
+          return (
+            <div key={s.id} className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-sedec-600">{s.codigo}</span>
+                    <span className="text-sm text-gray-700">{s.nome_completo}</span>
+                  </div>
+                  {/* Dependências */}
+                  {hasDeps && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {Object.entries(depLabels).map(([key, label]) => {
+                        const count = (deps as any)[key]
+                        if (!count || count === 0) return null
+                        return (
+                          <span key={key} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                            {label}: <span className="font-bold">{count}</span>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {!hasDeps && (
+                    <span className="text-[10px] text-gray-400 mt-1 block">Sem dependências — pode ser excluído livremente</span>
+                  )}
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button onClick={() => startEdit(s)} className="text-gray-400 hover:text-orange-500 p-1" title="Editar">
+                    <Edit3 size={15} />
+                  </button>
+                  <button onClick={() => startDelete(s)} className="text-gray-400 hover:text-red-500 p-1" title="Excluir">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Modal de exclusão */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl">
+            <div className="flex items-center gap-2 text-red-600 mb-4">
+              <AlertTriangle size={20} />
+              <h3 className="text-lg font-bold">Excluir setor</h3>
+            </div>
+
+            <p className="text-sm text-gray-700 mb-2">
+              Você está prestes a excluir o setor <span className="font-bold">{deleteTarget.codigo}</span> ({deleteTarget.nome_completo}).
+            </p>
+
+            {deleteTarget._deps && deleteTarget._deps.total > 0 ? (
+              <div className="space-y-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1">
+                    <AlertTriangle size={13} /> Este setor possui {deleteTarget._deps.total} dependência(s):
+                  </p>
+                  <div className="space-y-1">
+                    {Object.entries(depLabels).map(([key, label]) => {
+                      const count = (deleteTarget._deps as any)?.[key]
+                      if (!count || count === 0) return null
+                      return (
+                        <div key={key} className="text-xs text-amber-800 flex justify-between">
+                          <span>{label}</span>
+                          <span className="font-bold">{count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">
+                    Transferir todas as dependências para:
+                  </label>
+                  <select value={transferToId} onChange={e => setTransferToId(e.target.value)}
+                    className="input-field text-sm">
+                    <option value="">— Selecione o setor de destino —</option>
+                    {setores.filter(s => s.id !== deleteTarget.id).map(s => (
+                      <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Todos os usuários, projetos e participações serão transferidos para o setor selecionado antes da exclusão.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-xs text-green-700">
+                  Este setor não possui dependências e pode ser excluído com segurança.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-4 justify-end">
+              <button onClick={() => setDeleteTarget(null)}
+                className="text-sm text-gray-500 px-4 py-2">
+                Cancelar
+              </button>
+              <button onClick={confirmDelete} disabled={saving || (deleteTarget._deps?.total! > 0 && !transferToId)}
+                className="flex items-center gap-1 text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50">
+                <Trash2 size={14} /> {saving ? 'Excluindo...' : 'Confirmar exclusão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nota informativa */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-6">
+        <p className="text-xs text-blue-700 leading-relaxed">
+          <span className="font-semibold">Sobre a exclusão:</span> Setores com dependências (usuários, projetos, participações)
+          não podem ser excluídos diretamente. É necessário transferir todas as dependências para outro setor antes da exclusão.
+          Campos de texto em registros históricos (como o nome do setor em observações) permanecem inalterados.
         </p>
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ChevronDown, ChevronUp, MessageSquarePlus, Send, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { BLOCO_LABELS, STATUS_CONFIG } from '@/lib/utils'
 import type { AcaoEstrategica, DestaqueEstrategico, DestaqueLinha, PanoramicoLinha, Ficha, Fundamentacao, Observacao, Profile } from '@/lib/types'
@@ -13,6 +13,7 @@ export default function AcaoPage() {
   const params = useParams()
   const numero = decodeURIComponent(params.numero as string)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [acao, setAcao] = useState<any>(null)
@@ -183,7 +184,7 @@ export default function AcaoPage() {
   return (
     <div>
       {/* Back button */}
-      <button onClick={() => router.push('/dashboard')}
+      <button onClick={() => router.push(`/dashboard${searchParams.toString() ? '?' + searchParams.toString() : ''}`)}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar às ações
       </button>
