@@ -939,13 +939,19 @@ function FichaEditor({ ficha, saving, saved, onChange, onSave, onSaveMeta, onDel
 function UsuariosAdmin() {
   const [users, setUsers] = useState<any[]>([])
   const [setores, setSetores] = useState<any[]>([])
+  const [setoresCadastro, setSetoresCadastro] = useState<any[]>([])
   const supabase = createClient()
 
   useEffect(() => {
     supabase.from('profiles').select('*, setores:setor_id(codigo, nome_completo)').order('nome')
       .then(({ data }) => { if (data) setUsers(data) })
-    supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
-      .then(({ data }) => { if (data) setSetores(data) })
+    supabase.from('setores').select('id, codigo, nome_completo, visivel_cadastro').order('codigo')
+      .then(({ data }) => {
+        if (data) {
+          setSetores(data)
+          setSetoresCadastro(data.filter((s: any) => s.visivel_cadastro))
+        }
+      })
   }, [])
 
   async function updateRole(userId: string, newRole: string) {
@@ -981,7 +987,7 @@ function UsuariosAdmin() {
                 <select value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
                   className="text-xs border border-gray-200 rounded px-2 py-1">
                   <option value="">Sem setor</option>
-                  {setores.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
+                  {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
                 </select>
               </td>
               <td className="px-4 py-3">

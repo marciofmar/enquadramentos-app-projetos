@@ -20,7 +20,7 @@ export default function LoginPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
+    supabase.from('setores').select('id, codigo, nome_completo').eq('visivel_cadastro', true).order('codigo')
       .then(({ data }) => { if (data) setSetores(data) })
   }, [])
 
