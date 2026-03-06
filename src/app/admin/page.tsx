@@ -223,12 +223,17 @@ function ConteudoAdmin() {
   const [fichas, setFichas] = useState<any[]>([])
   const [fundamentacao, setFundamentacao] = useState<any>(null)
   const [fundItens, setFundItens] = useState<any[]>([])
+  const [setoresList, setSetoresList] = useState<any[]>([])
+  const [panSetores, setPanSetores] = useState<Record<number, any[]>>({})  // panoramico_linha_id → [{id, setor_id, tipo_participacao}]
+  const [fichaSetores, setFichaSetores] = useState<Record<number, any[]>>({})  // ficha_id → [{id, setor_id, tipo_participacao}]
   const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
       .then(({ data }) => { if (data) setAcoes(data) })
+    supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
+      .then(({ data }) => { if (data) setSetoresList(data) })
   }, [])
 
   async function selectAcao(acao: any) {
@@ -256,8 +261,28 @@ function ConteudoAdmin() {
     const { data: panData } = await supabase.from('panoramico_linhas').select('*').eq('acao_estrategica_id', acao.id).order('ordem')
     setPanoramico(panData || [])
 
+    // Load panoramico N:N
+    if (panData && panData.length > 0) {
+      const panIds = panData.map((p: any) => p.id)
+      const { data: psData } = await supabase.from('panoramico_setores').select('*').in('panoramico_linha_id', panIds)
+      const psMap: Record<number, any[]> = {}
+      panIds.forEach((pid: number) => { psMap[pid] = [] })
+      psData?.forEach((ps: any) => { if (psMap[ps.panoramico_linha_id]) psMap[ps.panoramico_linha_id].push(ps); else psMap[ps.panoramico_linha_id] = [ps] })
+      setPanSetores(psMap)
+    } else { setPanSetores({}) }
+
     const { data: fichasData } = await supabase.from('fichas').select('*').eq('acao_estrategica_id', acao.id).order('ordem')
     setFichas(fichasData || [])
+
+    // Load fichas N:N
+    if (fichasData && fichasData.length > 0) {
+      const fichaIds = fichasData.map((f: any) => f.id)
+      const { data: fsData } = await supabase.from('ficha_setores').select('*').in('ficha_id', fichaIds)
+      const fsMap: Record<number, any[]> = {}
+      fichaIds.forEach((fid: number) => { fsMap[fid] = [] })
+      fsData?.forEach((fs: any) => { if (fsMap[fs.ficha_id]) fsMap[fs.ficha_id].push(fs); else fsMap[fs.ficha_id] = [fs] })
+      setFichaSetores(fsMap)
+    } else { setFichaSetores({}) }
 
     const { data: fundData } = await supabase.from('fundamentacoes').select('*').eq('acao_estrategica_id', acao.id).single()
     setFundamentacao(fundData)
@@ -306,7 +331,13 @@ function ConteudoAdmin() {
     if (!item) return
     const key = `f-${fichaId}-${field}`
     setSaving(key)
-    const { error } = await supabase.from('fichas').update({ [field]: item[field] }).eq('id', fichaId)
+    // Limpa linhas vazias dos campos array antes de salvar
+    let value = item[field]
+    if (Array.isArray(value)) {
+      value = value.filter((l: string) => l.trim())
+      setFichas(prev => prev.map(x => x.id === fichaId ? { ...x, [field]: value } : x))
+    }
+    const { error } = await supabase.from('fichas').update({ [field]: value }).eq('id', fichaId)
     if (error) alert(`Erro: ${error.message}`)
     else { setSaved(key); setTimeout(() => setSaved(null), 2500) }
     setSaving(null)
@@ -331,6 +362,184 @@ function ConteudoAdmin() {
     if (error) alert(`Erro: ${error.message}`)
     else { setSaved(key); setTimeout(() => setSaved(null), 2500) }
     setSaving(null)
+  }
+
+  // ---- ADICIONAR / REMOVER PANORÂMICO ----
+
+  async function addPanoramicoLinha() {
+    if (!selectedAcao) return
+    const maxOrdem = panoramico.reduce((m, p) => Math.max(m, p.ordem || 0), 0)
+    const { data, error } = await supabase.from('panoramico_linhas').insert({
+      acao_estrategica_id: selectedAcao.id,
+      ordem: maxOrdem + 1,
+      setor_display: 'Novo Setor',
+      papel: '',
+      sintese_contribuicao: '',
+      nao_faz: '',
+    }).select().single()
+    if (error) { alert(`Erro ao criar: ${error.message}`); return }
+    setPanoramico(prev => [...prev, data])
+  }
+
+  async function deletePanoramicoLinha(id: number) {
+    const item = panoramico.find(x => x.id === id)
+    if (!confirm(`Remover "${item?.setor_display}" do quadro panorâmico?`)) return
+    // Remove vinculações N:N primeiro
+    await supabase.from('panoramico_setores').delete().eq('panoramico_linha_id', id)
+    const { error } = await supabase.from('panoramico_linhas').delete().eq('id', id)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setPanoramico(prev => prev.filter(x => x.id !== id))
+  }
+
+  async function savePanoramicoMeta(id: number) {
+    const item = panoramico.find(x => x.id === id)
+    if (!item) return
+    const key = `pan-meta-${id}`
+    setSaving(key)
+    const { error } = await supabase.from('panoramico_linhas').update({
+      setor_display: item.setor_display,
+      papel: item.papel,
+      sintese_contribuicao: item.sintese_contribuicao,
+      nao_faz: item.nao_faz,
+    }).eq('id', id)
+    if (error) alert(`Erro: ${error.message}`)
+    else { setSaved(key); setTimeout(() => setSaved(null), 2500) }
+    setSaving(null)
+  }
+
+  // ---- ADICIONAR / REMOVER FICHAS ----
+
+  async function addFicha() {
+    if (!selectedAcao) return
+    const maxOrdem = fichas.reduce((m, f) => Math.max(m, f.ordem || 0), 0)
+    const { data, error } = await supabase.from('fichas').insert({
+      acao_estrategica_id: selectedAcao.id,
+      ordem: maxOrdem + 1,
+      titulo: 'Nova Ficha — Setor',
+      setor_display: 'Novo Setor',
+      papel: '',
+      justificativa: '',
+      contribuicao_esperada: [],
+      nao_escopo: [],
+      dependencias_criticas: [],
+    }).select().single()
+    if (error) { alert(`Erro ao criar: ${error.message}`); return }
+    setFichas(prev => [...prev, data])
+  }
+
+  async function deleteFicha(id: number) {
+    const item = fichas.find(x => x.id === id)
+    if (!confirm(`Remover ficha "${item?.titulo}"? Esta ação é permanente.`)) return
+    // Remove vinculações N:N primeiro
+    await supabase.from('ficha_setores').delete().eq('ficha_id', id)
+    const { error } = await supabase.from('fichas').delete().eq('id', id)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setFichas(prev => prev.filter(x => x.id !== id))
+  }
+
+  async function saveFichaMeta(fichaId: number) {
+    const item = fichas.find(x => x.id === fichaId)
+    if (!item) return
+    const key = `f-meta-${fichaId}`
+    setSaving(key)
+    const { error } = await supabase.from('fichas').update({
+      titulo: item.titulo,
+      setor_display: item.setor_display,
+      papel: item.papel,
+    }).eq('id', fichaId)
+    if (error) alert(`Erro: ${error.message}`)
+    else { setSaved(key); setTimeout(() => setSaved(null), 2500) }
+    setSaving(null)
+  }
+
+  // ---- VINCULAÇÕES N:N (panoramico_setores / ficha_setores) ----
+
+  const TIPOS_PARTICIPACAO = [
+    { value: 'principal', label: 'Principal' },
+    { value: 'coordenador', label: 'Coordenador' },
+    { value: 'participante', label: 'Participante' },
+    { value: 'aval', label: 'Aval' },
+    { value: 'superior', label: 'Superior' },
+    { value: 'destaque', label: 'Destaque' },
+  ]
+
+  async function addPanSetor(panLinhaId: number, setorId: number, tipo: string) {
+    const { data, error } = await supabase.from('panoramico_setores').insert({
+      panoramico_linha_id: panLinhaId, setor_id: setorId, tipo_participacao: tipo,
+    }).select().single()
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setPanSetores(prev => ({ ...prev, [panLinhaId]: [...(prev[panLinhaId] || []), data] }))
+  }
+
+  async function removePanSetor(panLinhaId: number, vinculoId: number) {
+    const { error } = await supabase.from('panoramico_setores').delete().eq('id', vinculoId)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setPanSetores(prev => ({ ...prev, [panLinhaId]: (prev[panLinhaId] || []).filter(x => x.id !== vinculoId) }))
+  }
+
+  async function addFichaSetor(fichaId: number, setorId: number, tipo: string) {
+    const { data, error } = await supabase.from('ficha_setores').insert({
+      ficha_id: fichaId, setor_id: setorId, tipo_participacao: tipo,
+    }).select().single()
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setFichaSetores(prev => ({ ...prev, [fichaId]: [...(prev[fichaId] || []), data] }))
+  }
+
+  async function removeFichaSetor(fichaId: number, vinculoId: number) {
+    const { error } = await supabase.from('ficha_setores').delete().eq('id', vinculoId)
+    if (error) { alert(`Erro: ${error.message}`); return }
+    setFichaSetores(prev => ({ ...prev, [fichaId]: (prev[fichaId] || []).filter(x => x.id !== vinculoId) }))
+  }
+
+  function VinculoSetorManager({ vinculos, onAdd, onRemove }: {
+    vinculos: any[]; onAdd: (setorId: number, tipo: string) => void; onRemove: (vinculoId: number) => void
+  }) {
+    const [addingSetor, setAddingSetor] = useState(false)
+    const [newSetorId, setNewSetorId] = useState<number | ''>('')
+    const [newTipo, setNewTipo] = useState('principal')
+
+    return (
+      <div className="mt-2 border-t border-dashed border-gray-200 pt-2">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-gray-400 uppercase font-medium">Vínculos para filtro por setor</span>
+          {!addingSetor && (
+            <button onClick={() => setAddingSetor(true)} className="text-[10px] text-orange-500 hover:text-orange-700 font-medium">+ Vínculo</button>
+          )}
+        </div>
+        {vinculos.length === 0 && !addingSetor && (
+          <p className="text-[10px] text-gray-300 italic">Nenhum vínculo — este setor não aparece nos filtros.</p>
+        )}
+        <div className="space-y-1">
+          {vinculos.map(v => {
+            const setor = setoresList.find(s => s.id === v.setor_id)
+            return (
+              <div key={v.id} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1">
+                <span className="font-medium text-sedec-600">{setor?.codigo || `#${v.setor_id}`}</span>
+                <span className="text-gray-400">—</span>
+                <span className="text-gray-600">{v.tipo_participacao}</span>
+                <button onClick={() => onRemove(v.id)} className="ml-auto text-gray-300 hover:text-red-500"><X size={12} /></button>
+              </div>
+            )
+          })}
+        </div>
+        {addingSetor && (
+          <div className="flex items-end gap-2 mt-1.5">
+            <select value={newSetorId} onChange={e => setNewSetorId(parseInt(e.target.value) || '')}
+              className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded-lg">
+              <option value="">Selecione setor...</option>
+              {setoresList.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+            </select>
+            <select value={newTipo} onChange={e => setNewTipo(e.target.value)}
+              className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg">
+              {TIPOS_PARTICIPACAO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <button onClick={() => { if (newSetorId) { onAdd(newSetorId as number, newTipo); setNewSetorId(''); setAddingSetor(false) } }}
+              className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded-lg hover:bg-green-600">OK</button>
+            <button onClick={() => setAddingSetor(false)} className="text-xs text-gray-400 px-2 py-1.5">Cancelar</button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   function SaveBtn({ id, onClick }: { id: string; onClick: () => void }) {
@@ -361,7 +570,8 @@ function ConteudoAdmin() {
   }
 
   function arrayToText(arr: string[]) { return (arr || []).join('\n') }
-  function textToArray(text: string) { return text.split('\n').filter(l => l.trim()) }
+  function textToArray(text: string) { return text.split('\n') }
+  function textToArrayClean(text: string) { return text.split('\n').filter(l => l.trim()) }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -455,15 +665,30 @@ function ConteudoAdmin() {
             )}
 
             {/* Panorâmico */}
-            {panoramico.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <BlockHeader id="panoramico" label="Quadro Panorâmico" count={panoramico.length} />
                 {expandedBlock === 'panoramico' && (
                   <div className="p-4 space-y-3 border-t border-gray-100">
                     {panoramico.map(p => (
                       <div key={p.id} className="border border-gray-200 rounded-lg p-3">
-                        <span className="text-xs font-bold text-sedec-600">{p.setor_display} — {p.papel}</span>
-                        <div className="mt-2 space-y-2">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-gray-400 uppercase">Setor (display)</label>
+                              <input type="text" value={p.setor_display || ''} onChange={e => setPanoramico(prev => prev.map(x => x.id === p.id ? { ...x, setor_display: e.target.value } : x))}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg font-bold text-sedec-600" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-gray-400 uppercase">Papel</label>
+                              <input type="text" value={p.papel || ''} onChange={e => setPanoramico(prev => prev.map(x => x.id === p.id ? { ...x, papel: e.target.value } : x))}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg" />
+                            </div>
+                          </div>
+                          <button onClick={() => deletePanoramicoLinha(p.id)} className="text-gray-300 hover:text-red-500 mt-4 shrink-0" title="Remover">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
                           <div>
                             <label className="text-xs text-gray-500">Síntese da Contribuição</label>
                             <textarea value={p.sintese_contribuicao || ''} onChange={e => setPanoramico(prev => prev.map(x => x.id === p.id ? { ...x, sintese_contribuicao: e.target.value } : x))}
@@ -474,17 +699,24 @@ function ConteudoAdmin() {
                             <textarea value={p.nao_faz || ''} onChange={e => setPanoramico(prev => prev.map(x => x.id === p.id ? { ...x, nao_faz: e.target.value } : x))}
                               className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg resize-y" rows={2} />
                           </div>
-                          <SaveBtn id={`pan-${p.id}`} onClick={() => savePanoramicoLinha(p.id)} />
+                          <SaveBtn id={`pan-meta-${p.id}`} onClick={() => savePanoramicoMeta(p.id)} />
+                          <VinculoSetorManager
+                            vinculos={panSetores[p.id] || []}
+                            onAdd={(setorId, tipo) => addPanSetor(p.id, setorId, tipo)}
+                            onRemove={(vinculoId) => removePanSetor(p.id, vinculoId)}
+                          />
                         </div>
                       </div>
                     ))}
+                    <button onClick={addPanoramicoLinha}
+                      className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 font-medium mt-2">
+                      <Plus size={14} /> Adicionar setor ao quadro panorâmico
+                    </button>
                   </div>
                 )}
               </div>
-            )}
 
             {/* Fichas */}
-            {fichas.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <BlockHeader id="fichas" label="Fichas Detalhadas" count={fichas.length} />
                 {expandedBlock === 'fichas' && (
@@ -493,12 +725,21 @@ function ConteudoAdmin() {
                       <FichaEditor key={f.id} ficha={f} saving={saving} saved={saved}
                         onChange={(field, val) => setFichas(prev => prev.map(x => x.id === f.id ? { ...x, [field]: val } : x))}
                         onSave={(field) => saveFichaField(f.id, field)}
+                        onSaveMeta={() => saveFichaMeta(f.id)}
+                        onDelete={() => deleteFicha(f.id)}
+                        vinculos={fichaSetores[f.id] || []}
+                        onAddVinculo={(setorId, tipo) => addFichaSetor(f.id, setorId, tipo)}
+                        onRemoveVinculo={(vinculoId) => removeFichaSetor(f.id, vinculoId)}
+                        setoresList={setoresList}
                         SaveBtn={SaveBtn} arrayToText={arrayToText} textToArray={textToArray} />
                     ))}
+                    <button onClick={addFicha}
+                      className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 font-medium mt-2">
+                      <Plus size={14} /> Adicionar ficha detalhada
+                    </button>
                   </div>
                 )}
               </div>
-            )}
 
             {/* Fundamentação */}
             {fundamentacao && (
@@ -556,23 +797,111 @@ function ConteudoAdmin() {
 // EDITOR DE FICHA
 // ============================================================
 
-function FichaEditor({ ficha, saving, saved, onChange, onSave, SaveBtn, arrayToText, textToArray }: {
+function FichaEditor({ ficha, saving, saved, onChange, onSave, onSaveMeta, onDelete, vinculos, onAddVinculo, onRemoveVinculo, setoresList, SaveBtn, arrayToText, textToArray }: {
   ficha: any; saving: string | null; saved: string | null
   onChange: (field: string, value: any) => void
   onSave: (field: string) => void
+  onSaveMeta: () => void
+  onDelete: () => void
+  vinculos: any[]
+  onAddVinculo: (setorId: number, tipo: string) => void
+  onRemoveVinculo: (vinculoId: number) => void
+  setoresList: any[]
   SaveBtn: any; arrayToText: (a: string[]) => string; textToArray: (t: string) => string[]
 }) {
   const [open, setOpen] = useState(false)
+  const [addingVinculo, setAddingVinculo] = useState(false)
+  const [newSetorId, setNewSetorId] = useState<number | ''>('')
+  const [newTipo, setNewTipo] = useState('principal')
+
+  const TIPOS = [
+    { value: 'principal', label: 'Principal' },
+    { value: 'coordenador', label: 'Coordenador' },
+    { value: 'participante', label: 'Participante' },
+    { value: 'aval', label: 'Aval' },
+    { value: 'superior', label: 'Superior' },
+    { value: 'destaque', label: 'Destaque' },
+  ]
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
-      <button onClick={() => setOpen(!open)}
-        className="w-full bg-sedec-50 px-4 py-3 flex items-center justify-between text-sm font-medium text-sedec-700 hover:bg-sedec-100">
-        <span className="text-left">{ficha.titulo}</span>
-        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
+      <div className="bg-sedec-50 px-4 py-3 flex items-center justify-between">
+        <button onClick={() => setOpen(!open)}
+          className="flex-1 flex items-center justify-between text-sm font-medium text-sedec-700 hover:text-sedec-800 text-left">
+          <span>{ficha.titulo}</span>
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+        <button onClick={onDelete} className="text-gray-300 hover:text-red-500 ml-2 shrink-0" title="Remover ficha">
+          <Trash2 size={15} />
+        </button>
+      </div>
       {open && (
         <div className="p-4 space-y-4">
+          {/* Meta: título, setor_display, papel */}
+          <div className="bg-gray-50 rounded-lg p-3 space-y-2 border border-dashed border-gray-300">
+            <span className="text-[10px] text-gray-400 uppercase font-medium">Identificação da ficha</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-400">Título</label>
+                <input type="text" value={ficha.titulo || ''} onChange={e => onChange('titulo', e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400">Setor (display)</label>
+                <input type="text" value={ficha.setor_display || ''} onChange={e => onChange('setor_display', e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg font-bold text-sedec-600" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400">Papel</label>
+                <input type="text" value={ficha.papel || ''} onChange={e => onChange('papel', e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg" />
+              </div>
+            </div>
+            <SaveBtn id={`f-meta-${ficha.id}`} onClick={onSaveMeta} />
+          </div>
+
+          {/* Vínculos N:N para filtro */}
+          <div className="bg-gray-50 rounded-lg p-3 border border-dashed border-gray-300">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-gray-400 uppercase font-medium">Vínculos para filtro por setor</span>
+              {!addingVinculo && (
+                <button onClick={() => setAddingVinculo(true)} className="text-[10px] text-orange-500 hover:text-orange-700 font-medium">+ Vínculo</button>
+              )}
+            </div>
+            {vinculos.length === 0 && !addingVinculo && (
+              <p className="text-[10px] text-gray-300 italic">Nenhum vínculo — esta ficha não aparece nos filtros por setor.</p>
+            )}
+            <div className="space-y-1">
+              {vinculos.map(v => {
+                const setor = setoresList.find(s => s.id === v.setor_id)
+                return (
+                  <div key={v.id} className="flex items-center gap-2 text-xs bg-white rounded px-2 py-1 border border-gray-100">
+                    <span className="font-medium text-sedec-600">{setor?.codigo || `#${v.setor_id}`}</span>
+                    <span className="text-gray-400">—</span>
+                    <span className="text-gray-600">{v.tipo_participacao}</span>
+                    <button onClick={() => onRemoveVinculo(v.id)} className="ml-auto text-gray-300 hover:text-red-500"><X size={12} /></button>
+                  </div>
+                )
+              })}
+            </div>
+            {addingVinculo && (
+              <div className="flex items-end gap-2 mt-1.5">
+                <select value={newSetorId} onChange={e => setNewSetorId(parseInt(e.target.value) || '')}
+                  className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded-lg">
+                  <option value="">Selecione setor...</option>
+                  {setoresList.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+                </select>
+                <select value={newTipo} onChange={e => setNewTipo(e.target.value)}
+                  className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg">
+                  {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+                <button onClick={() => { if (newSetorId) { onAddVinculo(newSetorId as number, newTipo); setNewSetorId(''); setAddingVinculo(false) } }}
+                  className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded-lg hover:bg-green-600">OK</button>
+                <button onClick={() => setAddingVinculo(false)} className="text-xs text-gray-400 px-2 py-1.5">Cancelar</button>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="text-xs font-medium text-gray-500">Justificativa</label>
             <textarea value={ficha.justificativa || ''} onChange={e => onChange('justificativa', e.target.value)}
