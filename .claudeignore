@@ -1,0 +1,32 @@
+# Pastas de dependências e build
+node_modules/
+.next/
+dist/
+out/
+build/
+
+# Controle de Versão (Essencial!)
+.git/
+.gitignore
+
+# Logs e arquivos temporários
+*.log
+.npm
+.eslintcache
+
+# Pastas de ambiente e segredos (Segurança + Economia)
+.env*
+.vercel
+
+# Dados locais do Supabase/Docker (evita ler DBs gigantes)
+supabase/.temp/
+supabase/storage/
+docker/volumes/
+
+# Ativos pesados
+public/assets/
+public/images/
+*.png
+*.jpg
+*.svg
+*.pdf

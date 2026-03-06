@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -67,6 +67,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
                 <FolderKanban size={15} /> Projetos
               </button>
+              <button onClick={() => router.push('/dashboard/calendario')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <CalendarDays size={15} /> Calendário
+              </button>
             </nav>
 
             <div className="flex items-center gap-4">
@@ -103,6 +107,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button onClick={() => router.push('/dashboard/projetos')}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
             <FolderKanban size={13} /> Projetos
+          </button>
+          <button onClick={() => router.push('/dashboard/calendario')}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+            <CalendarDays size={13} /> Calendário
           </button>
         </div>
       </header>
