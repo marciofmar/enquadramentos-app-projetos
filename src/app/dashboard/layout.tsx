@@ -74,13 +74,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </nav>
 
             <div className="flex items-center gap-4">
-              {profile?.role === 'admin' && (
+              {(profile?.role === 'admin' || profile?.role === 'master') && (
                 <button
                   onClick={() => router.push('/admin')}
                   className="flex items-center gap-1.5 text-gray-400 hover:text-orange-400 text-sm transition-colors"
                 >
                   <Settings size={16} />
-                  <span className="hidden sm:inline">Admin</span>
+                  <span className="hidden sm:inline">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
                 </button>
               )}
 

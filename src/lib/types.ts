@@ -3,7 +3,7 @@ export interface Profile {
   email: string
   nome: string
   setor_id: number | null
-  role: 'admin' | 'gestor' | 'usuario'
+  role: 'admin' | 'master' | 'gestor' | 'usuario'
   ativo: boolean
 }
 
@@ -94,6 +94,9 @@ export interface Projeto {
   nome: string
   descricao: string
   problema_resolve: string
+  responsavel: string | null
+  indicador_sucesso: string | null
+  tipo_acao: string[] | null
   setor_lider_id: number
   criado_por: string
   created_at: string
@@ -104,6 +107,7 @@ export interface Entrega {
   projeto_id: number
   nome: string
   descricao: string
+  criterios_aceite: string | null
   dependencias_criticas: string | null
   data_final_prevista: string | null
   status: 'aberta' | 'em_andamento' | 'aguardando' | 'resolvida' | 'cancelada'

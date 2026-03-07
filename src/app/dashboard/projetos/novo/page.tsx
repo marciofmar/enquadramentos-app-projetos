@@ -9,7 +9,7 @@ import type { Profile } from '@/lib/types'
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
 interface Atividade { nome: string; descricao: string; data_prevista: string; participantes: Participante[] }
 interface Entrega {
-  nome: string; descricao: string; dependencias_criticas: string
+  nome: string; descricao: string; criterios_aceite: string; dependencias_criticas: string
   quinzena: string; participantes: Participante[]; atividades: Atividade[]
 }
 
@@ -40,6 +40,9 @@ export default function NovoProjetoPage() {
   const [descricao, setDescricao] = useState('')
   const [problemaResolve, setProblemaResolve] = useState('')
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
+  const [responsavel, setResponsavel] = useState('')
+  const [indicadorSucesso, setIndicadorSucesso] = useState('')
+  const [tipoAcao, setTipoAcao] = useState<string[]>([])
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
 
@@ -67,9 +70,17 @@ export default function NovoProjetoPage() {
     load()
   }, [])
 
+  const TIPOS_ACAO = [
+    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança'
+  ]
+
+  function toggleTipoAcao(tipo: string) {
+    setTipoAcao(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo])
+  }
+
   function addEntrega() {
     setEntregas([...entregas, {
-      nome: '', descricao: '', dependencias_criticas: '', quinzena: '',
+      nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '', quinzena: '',
       participantes: [{ setor_id: null, tipo_participante: 'setor', papel: '' }],
       atividades: []
     }])
@@ -155,8 +166,8 @@ export default function NovoProjetoPage() {
       return
     }
     for (const e of entregas) {
-      if (!e.nome.trim() || !e.descricao.trim()) {
-        alert('Preencha nome e descrição de todas as entregas.')
+      if (!e.nome.trim() || !e.descricao.trim() || !e.criterios_aceite.trim()) {
+        alert('Preencha nome, descrição e critérios de aceite de todas as entregas.')
         return
       }
       const validParticipantes = e.participantes.filter(p => p.papel.trim())
@@ -203,6 +214,9 @@ export default function NovoProjetoPage() {
     try {
       const { data: proj, error: projErr } = await supabase.from('projetos').insert({
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
+        responsavel: responsavel.trim() || null,
+        indicador_sucesso: indicadorSucesso.trim() || null,
+        tipo_acao: tipoAcao.length > 0 ? tipoAcao : null,
         setor_lider_id: setorLiderId, criado_por: profile!.id
       }).select().single()
       if (projErr) throw projErr
@@ -219,6 +233,7 @@ export default function NovoProjetoPage() {
       for (const e of entregas) {
         const { data: ent, error: entErr } = await supabase.from('entregas').insert({
           projeto_id: proj.id, nome: e.nome.trim(), descricao: e.descricao.trim(),
+          criterios_aceite: e.criterios_aceite.trim(),
           dependencias_criticas: e.dependencias_criticas.trim() || null,
           data_final_prevista: e.quinzena || null,
         }).select().single()
@@ -410,6 +425,11 @@ export default function NovoProjetoPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Responsável pelo projeto</label>
+            <input type="text" value={responsavel} onChange={e => setResponsavel(e.target.value)} className="input-field" placeholder="Nome do responsável (opcional)" />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Descrição — O quê <span className="text-red-500">*</span></label>
             <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={3}
               className="input-field resize-none" placeholder="Descreva o que este projeto entregará" />
@@ -422,6 +442,11 @@ export default function NovoProjetoPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Indicador de sucesso</label>
+            <input type="text" value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} className="input-field" placeholder="Sugestão de indicador de sucesso (opcional)" />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Ações estratégicas vinculadas <span className="text-red-500">*</span></label>
             <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
               {acoes.map(a => (
@@ -430,6 +455,19 @@ export default function NovoProjetoPage() {
                     onChange={() => toggleAcao(a.id)} className="rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
                   <span className="font-medium text-sedec-600">AE {a.numero}</span>
                   <span className="text-gray-600 line-clamp-1">{a.nome}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de ação</label>
+            <div className="flex flex-wrap gap-2 border border-gray-200 rounded-lg p-3">
+              {TIPOS_ACAO.map(tipo => (
+                <label key={tipo} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" checked={tipoAcao.includes(tipo)} onChange={() => toggleTipoAcao(tipo)}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
+                  <span className="text-gray-600">{tipo}</span>
                 </label>
               ))}
             </div>
@@ -465,6 +503,9 @@ export default function NovoProjetoPage() {
                     placeholder="Nome da entrega *" className="input-field text-sm" />
                   <textarea value={e.descricao} onChange={ev => updateEntrega(eIdx, 'descricao', ev.target.value)}
                     placeholder="Descrição da entrega *" className="input-field text-sm resize-none" rows={2} />
+                  <input type="text" value={e.criterios_aceite} onChange={ev => updateEntrega(eIdx, 'criterios_aceite', ev.target.value)}
+                    placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-sm" />
+                  <label className="text-xs font-medium text-gray-500 -mt-1">Critérios de aceite <span className="text-red-500">*</span></label>
 
                   {/* Participantes */}
                   <div>
@@ -490,6 +531,7 @@ export default function NovoProjetoPage() {
                       <input type="text" value={e.dependencias_criticas}
                         onChange={ev => updateEntrega(eIdx, 'dependencias_criticas', ev.target.value)}
                         placeholder="ex: custos específicos, tempo de licitação..." className="input-field text-xs" />
+                      <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                     </div>
                     <div>
                       <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>

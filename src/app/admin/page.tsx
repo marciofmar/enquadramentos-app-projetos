@@ -7,8 +7,13 @@ import { ArrowLeft, Check, X, MessageSquare, Users, FileEdit, Save, ChevronDown,
 import { STATUS_CONFIG, BLOCO_LABELS } from '@/lib/utils'
 import type { Profile } from '@/lib/types'
 
+type AdminTab = 'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'log'
+
+// Tabs acessíveis pelo perfil master (gestão de projetos)
+const MASTER_TABS: AdminTab[] = ['config', 'log']
+
 export default function AdminPage() {
-  const [tab, setTab] = useState<'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'log'>('observacoes')
+  const [tab, setTab] = useState<AdminTab>('observacoes')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -19,8 +24,10 @@ export default function AdminPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (!data || data.role !== 'admin') { router.push('/dashboard'); return }
+      if (!data || (data.role !== 'admin' && data.role !== 'master')) { router.push('/dashboard'); return }
       setProfile(data)
+      // Master inicia na tab config (primeira tab acessível)
+      if (data.role === 'master') setTab('config')
       setLoading(false)
     }
     check()
@@ -28,7 +35,9 @@ export default function AdminPage() {
 
   if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
 
-  const tabs = [
+  const isMaster = profile?.role === 'master'
+
+  const allTabs = [
     { key: 'observacoes' as const, label: 'Observações', icon: MessageSquare },
     { key: 'conteudo' as const, label: 'Editar Conteúdo', icon: FileEdit },
     { key: 'usuarios' as const, label: 'Usuários', icon: Users },
@@ -36,6 +45,9 @@ export default function AdminPage() {
     { key: 'config' as const, label: 'Configurações', icon: Settings },
     { key: 'log' as const, label: 'Log de Alterações', icon: History },
   ]
+
+  // Master só vê tabs de configurações de projetos e log
+  const tabs = isMaster ? allTabs.filter(t => MASTER_TABS.includes(t.key)) : allTabs
 
   return (
     <div>
@@ -60,7 +72,7 @@ export default function AdminPage() {
       {tab === 'conteudo' && <ConteudoAdmin />}
       {tab === 'usuarios' && <UsuariosAdmin />}
       {tab === 'setores' && <SetoresAdmin />}
-      {tab === 'config' && <ConfiguracoesAdmin />}
+      {tab === 'config' && <ConfiguracoesAdmin isMaster={isMaster} />}
       {tab === 'log' && <AuditLogAdmin />}
     </div>
   )
@@ -994,11 +1006,13 @@ function UsuariosAdmin() {
                 <select value={u.role} onChange={e => updateRole(u.id, e.target.value)}
                   className={`text-xs font-medium rounded px-2 py-1 border ${
                     u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                    u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
                     u.role === 'gestor' ? 'bg-blue-50 border-blue-200 text-blue-700' :
                     'bg-gray-50 border-gray-200 text-gray-600'
                   }`}>
                   <option value="usuario">Usuário</option>
                   <option value="gestor">Gestor</option>
+                  <option value="master">Master</option>
                   <option value="admin">Admin</option>
                 </select>
               </td>
@@ -1014,7 +1028,7 @@ function UsuariosAdmin() {
 // CONFIGURAÇÕES
 // ============================================================
 
-function ConfiguracoesAdmin() {
+function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
   const [configs, setConfigs] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -1072,26 +1086,52 @@ function ConfiguracoesAdmin() {
       ],
     },
     {
-      grupo: 'Módulo de Projetos',
+      grupo: 'Módulo de Projetos — Projetos e Entregas',
       toggles: [
         {
           chave: 'proj_permitir_cadastro',
-          titulo: 'Permitir cadastro de projetos/entregas/atividades',
-          descricao: 'Quando desligado, apenas administradores podem criar novos projetos, entregas e atividades. Gestores ficam somente com visualização.',
+          titulo: 'Permitir cadastro de projetos/entregas',
+          descricao: 'Quando desligado, apenas administradores podem criar novos projetos e entregas. Gestores ficam somente com visualização.',
           ligado: 'Gestores podem cadastrar',
           desligado: 'Só admin pode cadastrar',
         },
         {
           chave: 'proj_permitir_edicao',
-          titulo: 'Permitir edição/exclusão de projetos/entregas/atividades',
-          descricao: 'Quando desligado, apenas administradores podem editar ou excluir elementos. Gestores ficam somente com visualização.',
+          titulo: 'Permitir edição/exclusão de projetos/entregas',
+          descricao: 'Quando desligado, apenas administradores podem editar ou excluir projetos e entregas. Gestores ficam somente com visualização.',
           ligado: 'Gestores podem editar/excluir',
           desligado: 'Só admin pode editar/excluir',
         },
         {
           chave: 'proj_permitir_edicao_datas',
-          titulo: 'Permitir edição de datas das entregas',
-          descricao: 'Quando desligado, as datas (quinzenas) das entregas ficam travadas para gestores, mesmo que a edição geral esteja habilitada. Admins sempre podem alterar datas.',
+          titulo: 'Permitir edição de quinzenas das entregas',
+          descricao: 'Quando desligado, as quinzenas das entregas ficam travadas para gestores, mesmo que a edição geral esteja habilitada. Admins sempre podem alterar.',
+          ligado: 'Gestores podem alterar quinzenas',
+          desligado: 'Quinzenas travadas para gestores',
+        },
+      ],
+    },
+    {
+      grupo: 'Módulo de Projetos — Atividades',
+      toggles: [
+        {
+          chave: 'proj_permitir_cadastro_atividades',
+          titulo: 'Permitir cadastro de atividades',
+          descricao: 'Quando desligado, apenas administradores podem criar novas atividades. Gestores ficam somente com visualização.',
+          ligado: 'Gestores podem cadastrar atividades',
+          desligado: 'Só admin pode cadastrar atividades',
+        },
+        {
+          chave: 'proj_permitir_edicao_atividades',
+          titulo: 'Permitir edição/exclusão de atividades',
+          descricao: 'Quando desligado, apenas administradores podem editar ou excluir atividades. Gestores ficam somente com visualização.',
+          ligado: 'Gestores podem editar/excluir atividades',
+          desligado: 'Só admin pode editar/excluir atividades',
+        },
+        {
+          chave: 'proj_permitir_edicao_datas_atividades',
+          titulo: 'Permitir edição de datas das atividades',
+          descricao: 'Quando desligado, as datas das atividades ficam travadas para gestores, mesmo que a edição geral esteja habilitada. Admins sempre podem alterar.',
           ligado: 'Gestores podem alterar datas',
           desligado: 'Datas travadas para gestores',
         },
@@ -1099,9 +1139,12 @@ function ConfiguracoesAdmin() {
     },
   ]
 
+  // Master só vê configurações do módulo de projetos
+  const visibleItems = isMaster ? items.filter(g => g.grupo.startsWith('Módulo de Projetos')) : items
+
   return (
     <div className="max-w-2xl">
-      {items.map(group => (
+      {visibleItems.map(group => (
         <div key={group.grupo} className="mb-8">
           <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide mb-3">{group.grupo}</h3>
           <div className="space-y-4">

@@ -14,12 +14,14 @@ interface ProjetoCard {
   setor_lider_codigo: string
   setor_lider_nome: string
   acoes: { numero: string; nome: string; oe_codigo: string }[]
+  tipo_acao: string[]
   setores_participantes: string[]
   proxima_entrega: { nome: string; data: string } | null
   proxima_atividade: { nome: string; data: string } | null
   atividades_atrasadas: { nome: string; data: string }[]
   pontualidade: 'em_dia' | 'proximo' | 'atrasado'
   tem_atividades_atrasadas: boolean
+  status_projeto: 'em_andamento' | 'finalizado' | 'abortado'
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -84,7 +86,7 @@ export default function ProjetosPage() {
 
     // Projects with all related data
     const { data: projData } = await supabase.from('projetos')
-      .select(`id, nome, descricao, setor_lider_id,
+      .select(`id, nome, descricao, setor_lider_id, tipo_acao,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
         entregas(id, nome, data_final_prevista, status,
@@ -168,6 +170,14 @@ export default function ProjetosPage() {
           .sort((a: any, b: any) => new Date(a.data_prevista).getTime() - new Date(b.data_prevista).getTime())
         if (ativFuturas.length > 0) proximaAtividade = { nome: ativFuturas[0].nome, data: ativFuturas[0].data_prevista }
 
+        // Status do projeto
+        const entregas = p.entregas || []
+        let status_projeto: 'em_andamento' | 'finalizado' | 'abortado' = 'em_andamento'
+        if (entregas.length > 0) {
+          if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'abortado'
+          else if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) status_projeto = 'finalizado'
+        }
+
         return {
           id: p.id,
           nome: p.nome,
@@ -180,12 +190,14 @@ export default function ProjetosPage() {
             nome: pa.acao_estrategica?.nome || '',
             oe_codigo: pa.acao_estrategica?.objetivo_estrategico?.codigo || '',
           })),
+          tipo_acao: p.tipo_acao || [],
           setores_participantes: Array.from(setorSet),
           proxima_entrega: proximaEntrega,
           proxima_atividade: proximaAtividade,
           atividades_atrasadas: ativAtrasadas,
           pontualidade,
           tem_atividades_atrasadas: ativAtrasadas.length > 0,
+          status_projeto,
         }
       })
       setProjetos(cards)
@@ -243,7 +255,7 @@ export default function ProjetosPage() {
   }, [filtered])
 
   const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter)
-  const canCreate = profile?.role === 'admin' || (profile?.role === 'gestor' && configs['proj_permitir_cadastro'] !== 'false')
+  const canCreate = profile?.role === 'admin' || profile?.role === 'master' || (profile?.role === 'gestor' && configs['proj_permitir_cadastro'] !== 'false')
 
   function formatQuinzena(dateStr: string | null) {
     if (!dateStr) return '—'
@@ -309,6 +321,41 @@ export default function ProjetosPage() {
           </>
         })()}
       </div>
+
+      {/* Projetos por tipo de ação */}
+      {(() => {
+        const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança']
+        const relevantes = projetos.filter(p => p.status_projeto !== 'abortado')
+        const tiposComProjetos = TIPOS.filter(tipo => relevantes.some(p => p.tipo_acao.includes(tipo)))
+        if (tiposComProjetos.length === 0) return null
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+            <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {tiposComProjetos.map(tipo => {
+                const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo))
+                const emAndamento = projetosTipo.filter(p => p.status_projeto === 'em_andamento').length
+                const finalizados = projetosTipo.filter(p => p.status_projeto === 'finalizado').length
+                return (
+                  <div key={tipo} className="rounded-lg border border-gray-100 p-3 text-center">
+                    <span className="text-[11px] font-medium text-purple-600 block mb-2">{tipo}</span>
+                    <div className="flex justify-center gap-3">
+                      <div>
+                        <span className="text-lg font-bold text-blue-600 block leading-none">{emAndamento}</span>
+                        <span className="text-[9px] text-gray-400">em andam.</span>
+                      </div>
+                      <div>
+                        <span className="text-lg font-bold text-green-600 block leading-none">{finalizados}</span>
+                        <span className="text-[9px] text-gray-400">finaliz.</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 space-y-3">

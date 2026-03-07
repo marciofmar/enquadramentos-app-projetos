@@ -81,7 +81,7 @@ export default function ProjetoDetalhePage() {
     const { data: proj } = await supabase.from('projetos')
       .select(`*, setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
-        entregas(id, nome, descricao, dependencias_criticas, data_final_prevista, status, motivo_status,
+        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
           atividades(id, nome, descricao, data_prevista, status, motivo_status,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
@@ -102,11 +102,16 @@ export default function ProjetoDetalhePage() {
   }
 
   // Permission checks
-  const isAdmin = profile?.role === 'admin'
+  const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
   const isGestorDoSetor = profile?.role === 'gestor' && profile.setor_id === projeto?.setor_lider_id
-  const canEdit = isAdmin || (isGestorDoSetor && configs['proj_permitir_edicao'] !== 'false')
-  const canEditDates = isAdmin || (canEdit && configs['proj_permitir_edicao_datas'] !== 'false')
-  const canCreate = isAdmin || (isGestorDoSetor && configs['proj_permitir_cadastro'] !== 'false')
+  // Projetos e entregas
+  const canEdit = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao'] !== 'false')
+  const canEditDates = isAdminOrMaster || (canEdit && configs['proj_permitir_edicao_datas'] !== 'false')
+  const canCreate = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro'] !== 'false')
+  // Atividades
+  const canEditAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_atividades'] !== 'false')
+  const canEditAtividadeDates = isAdminOrMaster || (canEditAtividade && configs['proj_permitir_edicao_datas_atividades'] !== 'false')
+  const canCreateAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro_atividades'] !== 'false')
 
   // Pontualidade
   const pontualidade = useMemo(() => {
@@ -128,9 +133,16 @@ export default function ProjetoDetalhePage() {
   }
 
   // Project edit
+  const TIPOS_ACAO = [
+    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança'
+  ]
+
   function startEditProjeto() {
     setEditForm({
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
+      responsavel: projeto.responsavel || '',
+      indicador_sucesso: projeto.indicador_sucesso || '',
+      tipo_acao: projeto.tipo_acao || [],
       setor_lider_id: projeto.setor_lider_id,
       acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || []
     })
@@ -142,6 +154,9 @@ export default function ProjetoDetalhePage() {
     const anterior = { nome: projeto.nome, descricao: projeto.descricao }
     const { error } = await supabase.from('projetos').update({
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
+      responsavel: editForm.responsavel?.trim() || null,
+      indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
+      tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
       setor_lider_id: editForm.setor_lider_id,
     }).eq('id', projeto.id)
     if (error) { alert(error.message); setSaving(false); return }
@@ -167,7 +182,8 @@ export default function ProjetoDetalhePage() {
   // Entrega edit
   function startEditEntrega(e: any) {
     setEditForm({
-      nome: e.nome, descricao: e.descricao, dependencias_criticas: e.dependencias_criticas || '',
+      nome: e.nome, descricao: e.descricao, criterios_aceite: e.criterios_aceite || '',
+      dependencias_criticas: e.dependencias_criticas || '',
       data_final_prevista: e.data_final_prevista || '', status: e.status, motivo_status: e.motivo_status || '',
       participantes: e.entrega_participantes?.map((p: any) => ({
         id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
@@ -215,6 +231,7 @@ export default function ProjetoDetalhePage() {
 
     const { error } = await supabase.from('entregas').update({
       nome: editForm.nome, descricao: editForm.descricao,
+      criterios_aceite: editForm.criterios_aceite?.trim() || null,
       dependencias_criticas: editForm.dependencias_criticas || null,
       data_final_prevista: editForm.data_final_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
@@ -428,15 +445,19 @@ export default function ProjetoDetalhePage() {
             <div className="space-y-3">
               <input type="text" value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })}
                 className="input-field text-lg font-bold" />
-              {isAdmin && (
+              {isAdminOrMaster && (
                 <select value={editForm.setor_lider_id} onChange={e => setEditForm({ ...editForm, setor_lider_id: parseInt(e.target.value) })} className="input-field text-sm">
                   {setores.map((s: any) => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
                 </select>
               )}
+              <input type="text" value={editForm.responsavel || ''} onChange={e => setEditForm({ ...editForm, responsavel: e.target.value })}
+                className="input-field text-sm" placeholder="Responsável pelo projeto (opcional)" />
               <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
                 className="input-field text-sm resize-none" rows={3} placeholder="Descrição (O quê)" />
               <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
                 className="input-field text-sm resize-none" rows={3} placeholder="Problema que soluciona (Por quê)" />
+              <input type="text" value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
+                className="input-field text-sm" placeholder="Indicador de sucesso (opcional)" />
               <div className="max-h-40 overflow-y-auto border rounded-lg p-2">
                 {acoes.map((a: any) => (
                   <label key={a.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
@@ -447,6 +468,20 @@ export default function ProjetoDetalhePage() {
                     <span className="font-medium text-sedec-600">AE {a.numero}</span> {a.nome}
                   </label>
                 ))}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Tipo de ação</label>
+                <div className="flex flex-wrap gap-2 border rounded-lg p-2">
+                  {TIPOS_ACAO.map(tipo => (
+                    <label key={tipo} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input type="checkbox" checked={editForm.tipo_acao?.includes(tipo) || false}
+                        onChange={() => setEditForm((prev: any) => ({
+                          ...prev, tipo_acao: prev.tipo_acao?.includes(tipo) ? prev.tipo_acao.filter((t: string) => t !== tipo) : [...(prev.tipo_acao || []), tipo]
+                        }))} className="rounded border-gray-300 text-orange-500" />
+                      <span className="text-gray-600">{tipo}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={saveEditProjeto} disabled={saving}
@@ -477,6 +512,10 @@ export default function ProjetoDetalhePage() {
                 )}
               </div>
 
+              {projeto.responsavel && (
+                <p className="text-sm text-gray-600 mb-2"><span className="font-medium text-gray-500">Responsável:</span> {projeto.responsavel}</p>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                 <div className="bg-blue-50 rounded-lg p-3">
                   <span className="text-xs font-medium text-blue-500 block mb-1">O quê</span>
@@ -488,13 +527,25 @@ export default function ProjetoDetalhePage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-1">
+              {projeto.indicador_sucesso && (
+                <p className="text-sm text-gray-600 mb-3"><span className="font-medium text-gray-500">Indicador de sucesso:</span> {projeto.indicador_sucesso}</p>
+              )}
+
+              <div className="flex flex-wrap gap-1 mb-2">
                 {projeto.projeto_acoes?.map((pa: any) => (
                   <span key={pa.acao_estrategica?.id} className="bg-sedec-50 text-sedec-600 px-2 py-0.5 rounded text-xs font-medium">
                     AE {pa.acao_estrategica?.numero}
                   </span>
                 ))}
               </div>
+
+              {projeto.tipo_acao?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {projeto.tipo_acao.map((tipo: string) => (
+                    <span key={tipo} className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded text-xs font-medium">{tipo}</span>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -573,6 +624,12 @@ export default function ProjetoDetalhePage() {
                         className="input-field text-sm" placeholder="Nome" />
                       <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
                         className="input-field text-sm resize-none" rows={2} placeholder="Descrição" />
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
+                        <input type="text" value={editForm.criterios_aceite || ''}
+                          onChange={ev => setEditForm({ ...editForm, criterios_aceite: ev.target.value })}
+                          placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs" />
+                      </div>
 
                       <div className="flex flex-wrap items-end gap-3">
                         {/* Status — destaque visual */}
@@ -608,9 +665,12 @@ export default function ProjetoDetalhePage() {
                             placeholder="Opcional" className="input-field text-xs" />
                         </div>
                       </div>
-                      <input type="text" value={editForm.dependencias_criticas}
-                        onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                        placeholder="Dependências críticas" className="input-field text-xs" />
+                      <div>
+                        <input type="text" value={editForm.dependencias_criticas}
+                          onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
+                          placeholder="Dependências críticas" className="input-field text-xs" />
+                        <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
+                      </div>
 
                       {/* Participantes */}
                       <div>
@@ -642,6 +702,9 @@ export default function ProjetoDetalhePage() {
                   ) : (
                     <div>
                       <p className="text-sm text-gray-600 mb-3">{e.descricao}</p>
+                      {e.criterios_aceite && (
+                        <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Critérios de aceite:</span> {e.criterios_aceite}</p>
+                      )}
                       {e.dependencias_criticas && (
                         <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Dependências:</span> {e.dependencias_criticas}</p>
                       )}
@@ -664,7 +727,7 @@ export default function ProjetoDetalhePage() {
                       <div className="border-t border-gray-100 pt-3 mt-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Atividades</span>
-                          {canCreate && (
+                          {canCreateAtividade && (
                             <button onClick={() => addNewAtividade(e.id)}
                               className="text-[11px] text-orange-500 hover:text-orange-700 font-medium flex items-center gap-1">
                               <ListPlus size={13} /> Atividade
@@ -713,6 +776,7 @@ export default function ProjetoDetalhePage() {
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
                                       <input type="date" value={editForm.data_prevista || ''}
                                         max={editForm.entrega_data_final || undefined}
+                                        disabled={!canEditAtividadeDates}
                                         onChange={ev => {
                                           const nd = ev.target.value
                                           if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
@@ -721,7 +785,7 @@ export default function ProjetoDetalhePage() {
                                           }
                                           setEditForm({ ...editForm, data_prevista: nd })
                                         }}
-                                        className="w-full input-field text-xs" />
+                                        className={`w-full input-field text-xs ${!canEditAtividadeDates ? 'opacity-50' : ''}`} />
                                     </div>
 
                                     {/* Motivo — flex */}
@@ -796,7 +860,7 @@ export default function ProjetoDetalhePage() {
                                     )}
                                   </div>
                                   </div>
-                                  {canEdit && (
+                                  {canEditAtividade && (
                                     <div className="flex gap-1.5 shrink-0 ml-2">
                                       <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500"><Edit3 size={13} /></button>
                                       <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
