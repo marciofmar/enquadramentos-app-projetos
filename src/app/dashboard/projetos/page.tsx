@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, ChevronRight, Building2, Activity } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 interface ProjetoCard {
@@ -22,6 +22,7 @@ interface ProjetoCard {
   pontualidade: 'em_dia' | 'proximo' | 'atrasado'
   tem_atividades_atrasadas: boolean
   status_projeto: 'em_andamento' | 'finalizado' | 'abortado'
+  solicitacoes_pendentes: number
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -95,6 +96,12 @@ export default function ProjetosPage() {
             atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
         )`)
       .order('nome')
+
+    // Solicitações pendentes por projeto
+    const { data: solsData } = await supabase.from('solicitacoes_alteracao')
+      .select('projeto_id').eq('status', 'em_analise')
+    const solsPorProjeto: Record<number, number> = {}
+    solsData?.forEach((s: any) => { solsPorProjeto[s.projeto_id] = (solsPorProjeto[s.projeto_id] || 0) + 1 })
 
     if (projData) {
       const cards: ProjetoCard[] = projData.map((p: any) => {
@@ -198,6 +205,7 @@ export default function ProjetosPage() {
           pontualidade,
           tem_atividades_atrasadas: ativAtrasadas.length > 0,
           status_projeto,
+          solicitacoes_pendentes: solsPorProjeto[p.id] || 0,
         }
       })
       setProjetos(cards)
@@ -254,6 +262,8 @@ export default function ProjetosPage() {
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   }, [filtered])
 
+  const [showPaineis, setShowPaineis] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter)
   const canCreate = profile?.role === 'admin' || profile?.role === 'master' || (profile?.role === 'gestor' && configs['proj_permitir_cadastro'] !== 'false')
 
@@ -290,104 +300,122 @@ export default function ProjetosPage() {
         )}
       </div>
 
-      {/* Painel consolidado */}
-      <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
-        <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-gray-200 min-w-[100px]">
-          <span className="text-2xl font-bold text-sedec-600 leading-none">{projetos.length}</span>
-          <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Projetos</span>
-        </div>
-        {(() => {
-          const atrasados = projetos.filter(p => p.pontualidade === 'atrasado').length
-          const proximos = projetos.filter(p => p.pontualidade === 'proximo').length
-          const emDia = projetos.filter(p => p.pontualidade === 'em_dia').length
-          const comAtivAtrasadas = projetos.filter(p => p.tem_atividades_atrasadas).length
-          return <>
-            {emDia > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-green-200 min-w-[100px]">
-              <span className="text-2xl font-bold text-green-600 leading-none">{emDia}</span>
-              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Em dia</span>
-            </div>}
-            {proximos > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-yellow-200 min-w-[100px]">
-              <span className="text-2xl font-bold text-yellow-600 leading-none">{proximos}</span>
-              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Próx. do prazo</span>
-            </div>}
-            {atrasados > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-red-50 border border-red-200 min-w-[100px]">
-              <span className="text-2xl font-bold text-red-600 leading-none">{atrasados}</span>
-              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Atrasados</span>
-            </div>}
-            {comAtivAtrasadas > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-red-200 min-w-[100px]">
-              <span className="text-2xl font-bold text-red-500 leading-none">{comAtivAtrasadas}</span>
-              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">C/ ativ. atrasada</span>
-            </div>}
-          </>
-        })()}
+      {/* Barra de ações: Painéis + Filtros */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setShowPaineis(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showPaineis ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <Activity size={14} /> Painéis {showPaineis ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+        <button onClick={() => setShowFilters(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showFilters || hasFilters ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <Filter size={14} /> Filtros {hasFilters && <span className="bg-white/30 text-[10px] px-1.5 rounded-full">ativos</span>} {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
       </div>
 
-      {/* Projetos por tipo de ação */}
-      {(() => {
-        const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança']
-        const relevantes = projetos.filter(p => p.status_projeto !== 'abortado')
-        const tiposComProjetos = TIPOS.filter(tipo => relevantes.some(p => p.tipo_acao.includes(tipo)))
-        if (tiposComProjetos.length === 0) return null
-        return (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-            <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {tiposComProjetos.map(tipo => {
-                const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo))
-                const emAndamento = projetosTipo.filter(p => p.status_projeto === 'em_andamento').length
-                const finalizados = projetosTipo.filter(p => p.status_projeto === 'finalizado').length
-                return (
-                  <div key={tipo} className="rounded-lg border border-gray-100 p-3 text-center">
-                    <span className="text-[11px] font-medium text-purple-600 block mb-2">{tipo}</span>
-                    <div className="flex justify-center gap-3">
-                      <div>
-                        <span className="text-lg font-bold text-blue-600 block leading-none">{emAndamento}</span>
-                        <span className="text-[9px] text-gray-400">em andam.</span>
-                      </div>
-                      <div>
-                        <span className="text-lg font-bold text-green-600 block leading-none">{finalizados}</span>
-                        <span className="text-[9px] text-gray-400">finaliz.</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+      {/* Painéis consolidados */}
+      {showPaineis && (
+        <div className="space-y-4 mb-6">
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-gray-200 min-w-[100px]">
+              <span className="text-2xl font-bold text-sedec-600 leading-none">{projetos.length}</span>
+              <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Projetos</span>
             </div>
+            {(() => {
+              const atrasados = projetos.filter(p => p.pontualidade === 'atrasado').length
+              const proximos = projetos.filter(p => p.pontualidade === 'proximo').length
+              const emDia = projetos.filter(p => p.pontualidade === 'em_dia').length
+              const comAtivAtrasadas = projetos.filter(p => p.tem_atividades_atrasadas).length
+              return <>
+                {emDia > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-green-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-green-600 leading-none">{emDia}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Em dia</span>
+                </div>}
+                {proximos > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-yellow-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-yellow-600 leading-none">{proximos}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Próx. do prazo</span>
+                </div>}
+                {atrasados > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-red-50 border border-red-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-red-600 leading-none">{atrasados}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Atrasados</span>
+                </div>}
+                {comAtivAtrasadas > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-red-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-red-500 leading-none">{comAtivAtrasadas}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">C/ ativ. atrasada</span>
+                </div>}
+              </>
+            })()}
           </div>
-        )
-      })()}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
-          <Filter size={16} /> Filtros
-          {hasFilters && (
-            <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter('') }}
-              className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
-              <X size={14} /> Limpar
-            </button>
-          )}
+          {/* Projetos por tipo de ação */}
+          {(() => {
+            const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança']
+            const relevantes = projetos.filter(p => p.status_projeto !== 'abortado')
+            const tiposComProjetos = TIPOS.filter(tipo => relevantes.some(p => p.tipo_acao.includes(tipo)))
+            if (tiposComProjetos.length === 0) return null
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {tiposComProjetos.map(tipo => {
+                    const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo))
+                    const emAndamento = projetosTipo.filter(p => p.status_projeto === 'em_andamento').length
+                    const finalizados = projetosTipo.filter(p => p.status_projeto === 'finalizado').length
+                    return (
+                      <div key={tipo} className="rounded-lg border border-gray-100 p-3 text-center">
+                        <span className="text-[11px] font-medium text-purple-600 block mb-2">{tipo}</span>
+                        <div className="flex justify-center gap-3">
+                          <div>
+                            <span className="text-lg font-bold text-blue-600 block leading-none">{emAndamento}</span>
+                            <span className="text-[9px] text-gray-400">em andam.</span>
+                          </div>
+                          <div>
+                            <span className="text-lg font-bold text-green-600 block leading-none">{finalizados}</span>
+                            <span className="text-[9px] text-gray-400">finaliz.</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Buscar projeto..." value={searchText}
-              onChange={e => setSearchText(e.target.value)} className="input-field pl-9" />
+      )}
+
+      {/* Filtros */}
+      {(showFilters || hasFilters) && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+            <Filter size={16} /> Filtros
+            {hasFilters && (
+              <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter('') }}
+                className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                <X size={14} /> Limpar
+              </button>
+            )}
           </div>
-          <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
-            <option value="">Todos os objetivos</option>
-            {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
-          </select>
-          <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field">
-            <option value="">Todas as ações</option>
-            {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>AE {a.numero}</option>)}
-          </select>
-          <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
-            <option value="">Todos os setores</option>
-            {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
-          </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar projeto..." value={searchText}
+                onChange={e => setSearchText(e.target.value)} className="input-field pl-9" />
+            </div>
+            <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
+              <option value="">Todos os objetivos</option>
+              {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
+            </select>
+            <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field">
+              <option value="">Todas as ações</option>
+              {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>AE {a.numero}</option>)}
+            </select>
+            <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
+              <option value="">Todos os setores</option>
+              {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       <p className="text-sm text-gray-500 mb-4">{filtered.length} projeto(s){hasFilters ? ' filtrado(s)' : ''}</p>
 
@@ -422,6 +450,11 @@ export default function ProjetosPage() {
                       {p.tem_atividades_atrasadas && (
                         <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                           <Activity size={10} /> {p.atividades_atrasadas.length} ativ. atrasada{p.atividades_atrasadas.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {p.solicitacoes_pendentes > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          <ClipboardList size={10} /> {p.solicitacoes_pendentes} solicit.
                         </span>
                       )}
                     </div>

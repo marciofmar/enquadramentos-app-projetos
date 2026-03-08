@@ -443,7 +443,8 @@ export default function NovoProjetoPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Indicador de sucesso</label>
-            <input type="text" value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} className="input-field" placeholder="Sugestão de indicador de sucesso (opcional)" />
+            <textarea value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} rows={2}
+              className="input-field resize-none" placeholder="Sugestão de indicador de sucesso (opcional)" />
           </div>
 
           <div>
@@ -503,9 +504,11 @@ export default function NovoProjetoPage() {
                     placeholder="Nome da entrega *" className="input-field text-sm" />
                   <textarea value={e.descricao} onChange={ev => updateEntrega(eIdx, 'descricao', ev.target.value)}
                     placeholder="Descrição da entrega *" className="input-field text-sm resize-none" rows={2} />
-                  <input type="text" value={e.criterios_aceite} onChange={ev => updateEntrega(eIdx, 'criterios_aceite', ev.target.value)}
-                    placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-sm" />
-                  <label className="text-xs font-medium text-gray-500 -mt-1">Critérios de aceite <span className="text-red-500">*</span></label>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Critérios de aceite <span className="text-red-500">*</span></label>
+                    <input type="text" value={e.criterios_aceite} onChange={ev => updateEntrega(eIdx, 'criterios_aceite', ev.target.value)}
+                      placeholder="ex: Minuta apresentada e aprovada pelo Superintendente" className="input-field text-sm" />
+                  </div>
 
                   {/* Participantes */}
                   <div>
@@ -525,22 +528,20 @@ export default function NovoProjetoPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-500">Dependências críticas</label>
-                      <input type="text" value={e.dependencias_criticas}
-                        onChange={ev => updateEntrega(eIdx, 'dependencias_criticas', ev.target.value)}
-                        placeholder="ex: custos específicos, tempo de licitação..." className="input-field text-xs" />
-                      <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>
-                      <select value={e.quinzena} onChange={ev => handleQuinzenaChange(eIdx, ev.target.value)}
-                        className="input-field text-xs">
-                        <option value="">Sem prazo definido</option>
-                        {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Dependências críticas</label>
+                    <textarea value={e.dependencias_criticas}
+                      onChange={ev => updateEntrega(eIdx, 'dependencias_criticas', ev.target.value)}
+                      placeholder="ex: custos específicos, tempo de licitação, dependência de ação de algum setor..." className="input-field text-xs resize-none" rows={2} />
+                    <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
+                  </div>
+                  <div className="w-48">
+                    <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>
+                    <select value={e.quinzena} onChange={ev => handleQuinzenaChange(eIdx, ev.target.value)}
+                      className="input-field text-xs">
+                      <option value="">Sem prazo definido</option>
+                      {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                    </select>
                   </div>
 
                   {/* Atividades */}
@@ -570,11 +571,11 @@ export default function NovoProjetoPage() {
                         <div className="space-y-2">
                           <input type="text" value={a.nome} onChange={ev => updateAtividade(eIdx, aIdx, 'nome', ev.target.value)}
                             placeholder="Nome da atividade *" className="input-field text-xs" />
-                          <input type="text" value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
-                            placeholder="Descrição da atividade *" className="input-field text-xs" />
+                          <textarea value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
+                            placeholder="Descrição da atividade *" className="input-field text-xs resize-none" rows={2} />
 
                           {/* Data prevista da atividade */}
-                          <div>
+                          <div className="w-40">
                             <label className="text-[10px] font-medium text-gray-500">Data prevista (opcional)</label>
                             <input type="date" value={a.data_prevista}
                               max={e.quinzena || undefined}

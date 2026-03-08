@@ -121,6 +121,24 @@ export interface Atividade {
   descricao: string
 }
 
+export interface SolicitacaoAlteracao {
+  id: number
+  solicitante_id: string
+  solicitante_nome: string
+  tipo_entidade: 'projeto' | 'entrega' | 'atividade'
+  entidade_id: number
+  entidade_nome: string
+  projeto_id: number
+  tipo_operacao: 'edicao' | 'exclusao'
+  dados_alteracao: any
+  status: 'em_analise' | 'deferida' | 'indeferida' | 'cancelada'
+  avaliador_id: string | null
+  avaliador_nome: string | null
+  justificativa_avaliador: string | null
+  avaliado_em: string | null
+  created_at: string
+}
+
 export interface AuditLogEntry {
   id: number
   usuario_id: string

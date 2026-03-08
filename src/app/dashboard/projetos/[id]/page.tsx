@@ -58,6 +58,7 @@ export default function ProjetoDetalhePage() {
   const [editForm, setEditForm] = useState<any>({})
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [saving, setSaving] = useState(false)
+  const [solicitacoes, setSolicitacoes] = useState<any[]>([])
 
   useEffect(() => { loadAll() }, [id])
 
@@ -90,28 +91,41 @@ export default function ProjetoDetalhePage() {
       .eq('id', id).single()
 
     if (proj) {
-      proj.entregas?.sort((a: any, b: any) => a.id - b.id)
-      proj.entregas?.forEach((e: any) => e.atividades?.sort((a: any, b: any) => a.id - b.id))
+      // Ordenar atividades por data (mais cedo primeiro, sem data por último)
+      proj.entregas?.forEach((e: any) => e.atividades?.sort((a: any, b: any) => {
+        if (!a.data_prevista && !b.data_prevista) return a.id - b.id
+        if (!a.data_prevista) return 1
+        if (!b.data_prevista) return -1
+        return a.data_prevista.localeCompare(b.data_prevista)
+      }))
+      // Ordenar entregas pela data da primeira atividade (mais cedo primeiro, sem atividades por último)
+      proj.entregas?.sort((a: any, b: any) => {
+        const aFirst = a.atividades?.find((at: any) => at.data_prevista)?.data_prevista
+        const bFirst = b.atividades?.find((at: any) => at.data_prevista)?.data_prevista
+        if (!aFirst && !bFirst) return a.id - b.id
+        if (!aFirst) return 1
+        if (!bFirst) return -1
+        return aFirst.localeCompare(bFirst)
+      })
       setProjeto(proj)
       // Expand all entregas by default
       const exp: Record<number, boolean> = {}
       proj.entregas?.forEach((e: any) => { exp[e.id] = true })
       setExpanded(exp)
+
+      // Carregar solicitações do projeto
+      const { data: sols } = await supabase.from('solicitacoes_alteracao')
+        .select('*').eq('projeto_id', id).order('created_at', { ascending: false })
+      if (sols) setSolicitacoes(sols)
     }
     setLoading(false)
   }
 
-  // Permission checks
+  // Permission checks — admin, master e gestor do setor líder podem editar
   const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
   const isGestorDoSetor = profile?.role === 'gestor' && profile.setor_id === projeto?.setor_lider_id
-  // Projetos e entregas
-  const canEdit = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao'] !== 'false')
-  const canEditDates = isAdminOrMaster || (canEdit && configs['proj_permitir_edicao_datas'] !== 'false')
-  const canCreate = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro'] !== 'false')
-  // Atividades
-  const canEditAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_atividades'] !== 'false')
-  const canEditAtividadeDates = isAdminOrMaster || (canEditAtividade && configs['proj_permitir_edicao_datas_atividades'] !== 'false')
-  const canCreateAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro_atividades'] !== 'false')
+  const canEdit = isAdminOrMaster || isGestorDoSetor
+  const canCreate = canEdit
 
   // Pontualidade
   const pontualidade = useMemo(() => {
@@ -123,6 +137,37 @@ export default function ProjetoDetalhePage() {
     if (active.some((e: any) => { const d = new Date(e.data_final_prevista); return d >= now && d <= quinzena })) return 'proximo'
     return 'em_dia'
   }, [projeto])
+
+  // Gestores precisam de aprovação para editar/excluir (somente se configuração = 'true')
+  const needsApproval = !isAdminOrMaster && isGestorDoSetor && configs['proj_exigir_aprovacao_edicao'] === 'true'
+
+  function hasPendingSolicitacao(tipoEntidade: string, entidadeId: number) {
+    return solicitacoes.some(s => s.tipo_entidade === tipoEntidade && s.entidade_id === entidadeId && s.status === 'em_analise')
+  }
+
+  async function criarSolicitacao(tipoEntidade: string, entidadeId: number, entidadeNome: string, tipoOperacao: string, dadosAlteracao: any) {
+    const { error } = await supabase.from('solicitacoes_alteracao').insert({
+      solicitante_id: profile!.id,
+      solicitante_nome: profile!.nome,
+      tipo_entidade: tipoEntidade,
+      entidade_id: entidadeId,
+      entidade_nome: entidadeNome,
+      projeto_id: projeto.id,
+      tipo_operacao: tipoOperacao,
+      dados_alteracao: dadosAlteracao,
+    })
+    if (error) { alert(`Erro ao criar solicitação: ${error.message}`); return false }
+    alert('Solicitação enviada para o Gabinete de Gestão de Projetos para avaliação.')
+    return true
+  }
+
+  async function cancelarSolicitacao(solId: number) {
+    if (!confirm('Cancelar esta solicitação?')) return
+    const { error } = await supabase.from('solicitacoes_alteracao')
+      .update({ status: 'cancelada' }).eq('id', solId)
+    if (error) { alert(error.message); return }
+    loadAll()
+  }
 
   async function auditLog(tipo: string, entidade: string, entidadeId: number, anterior: any, novo: any) {
     await supabase.from('audit_log').insert({
@@ -151,28 +196,61 @@ export default function ProjetoDetalhePage() {
 
   async function saveEditProjeto() {
     setSaving(true)
-    const anterior = { nome: projeto.nome, descricao: projeto.descricao }
-    const { error } = await supabase.from('projetos').update({
+
+    if (needsApproval) {
+      if (hasPendingSolicitacao('projeto', projeto.id)) {
+        alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
+        setSaving(false); return
+      }
+      const dados = {
+        nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
+        responsavel: editForm.responsavel?.trim() || null,
+        indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
+        tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
+        setor_lider_id: editForm.setor_lider_id,
+        acoes: editForm.acoes,
+      }
+      const ok = await criarSolicitacao('projeto', projeto.id, projeto.nome, 'edicao', dados)
+      if (ok) { setEditingProjeto(false); loadAll() }
+      setSaving(false); return
+    }
+
+    const novosDados = {
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
       responsavel: editForm.responsavel?.trim() || null,
       indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
       tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
       setor_lider_id: editForm.setor_lider_id,
-    }).eq('id', projeto.id)
+    }
+    const anterior = {
+      nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
+      responsavel: projeto.responsavel, indicador_sucesso: projeto.indicador_sucesso,
+      tipo_acao: projeto.tipo_acao, setor_lider_id: projeto.setor_lider_id,
+    }
+    const { error } = await supabase.from('projetos').update(novosDados).eq('id', projeto.id)
     if (error) { alert(error.message); setSaving(false); return }
 
-    // Update acoes
     await supabase.from('projeto_acoes').delete().eq('projeto_id', projeto.id)
     if (editForm.acoes.length > 0) {
       await supabase.from('projeto_acoes').insert(
         editForm.acoes.map((aid: number) => ({ projeto_id: projeto.id, acao_estrategica_id: aid })))
     }
 
-    await auditLog('update', 'projeto', projeto.id, anterior, { nome: editForm.nome, descricao: editForm.descricao })
+    await auditLog('update', 'projeto', projeto.id, anterior, novosDados)
     setEditingProjeto(false); setSaving(false); loadAll()
   }
 
   async function deleteProject() {
+    if (needsApproval) {
+      if (hasPendingSolicitacao('projeto', projeto.id)) {
+        alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
+        return
+      }
+      if (!confirm(`Solicitar exclusão do projeto "${projeto.nome}"?\n\nA solicitação será enviada para avaliação.`)) return
+      await criarSolicitacao('projeto', projeto.id, projeto.nome, 'exclusao', null)
+      loadAll(); return
+    }
+
     if (!confirm(`Excluir o projeto "${projeto.nome}"?\n\nTodas as entregas e atividades serão excluídas permanentemente.`)) return
     await auditLog('delete', 'projeto', projeto.id, { nome: projeto.nome }, null)
     await supabase.from('projetos').delete().eq('id', projeto.id)
@@ -195,8 +273,15 @@ export default function ProjetoDetalhePage() {
   async function saveEditEntrega(entregaId: number) {
     setSaving(true)
 
-    // Validate: no duplicate participantes
-    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
+    // Validate: participantes com papel preenchido
+    const allParts = editForm.participantes || []
+    for (const p of allParts) {
+      if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
+        alert('Preencha o papel de todos os participantes.')
+        setSaving(false); return
+      }
+    }
+    const validP = allParts.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
     const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
     if (new Set(pKeys).size !== pKeys.length) {
       alert('Há participantes duplicados nesta entrega. Use o campo "papel" para múltiplos papéis do mesmo setor.')
@@ -229,30 +314,69 @@ export default function ProjetoDetalhePage() {
       }
     }
 
-    const { error } = await supabase.from('entregas').update({
+    if (needsApproval) {
+      if (hasPendingSolicitacao('entrega', entregaId)) {
+        alert('Já existe uma solicitação pendente para esta entrega. Aguarde a avaliação.')
+        setSaving(false); return
+      }
+      const dados = {
+        nome: editForm.nome, descricao: editForm.descricao,
+        criterios_aceite: editForm.criterios_aceite?.trim() || null,
+        dependencias_criticas: editForm.dependencias_criticas || null,
+        data_final_prevista: editForm.data_final_prevista || null,
+        status: editForm.status, motivo_status: editForm.motivo_status || null,
+        participantes: validP.map((p: any) => ({
+          setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+          tipo_participante: p.tipo_participante, papel: p.papel.trim()
+        })),
+      }
+      const ok = await criarSolicitacao('entrega', entregaId, entrega?.nome || '', 'edicao', dados)
+      if (ok) { setEditingEntrega(null); loadAll() }
+      setSaving(false); return
+    }
+
+    const novosDadosE = {
       nome: editForm.nome, descricao: editForm.descricao,
       criterios_aceite: editForm.criterios_aceite?.trim() || null,
       dependencias_criticas: editForm.dependencias_criticas || null,
       data_final_prevista: editForm.data_final_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
-    }).eq('id', entregaId)
+    }
+    const anteriorE = {
+      nome: entrega?.nome, descricao: entrega?.descricao,
+      criterios_aceite: entrega?.criterios_aceite, dependencias_criticas: entrega?.dependencias_criticas,
+      data_final_prevista: entrega?.data_final_prevista,
+      status: entrega?.status, motivo_status: entrega?.motivo_status,
+    }
+    const { error } = await supabase.from('entregas').update(novosDadosE).eq('id', entregaId)
     if (error) { alert(error.message); setSaving(false); return }
 
-    // Rebuild participantes
-    await supabase.from('entrega_participantes').delete().eq('entrega_id', entregaId)
+    const { error: delPErr } = await supabase.from('entrega_participantes').delete().eq('entrega_id', entregaId)
+    if (delPErr) { alert(`Erro ao atualizar participantes: ${delPErr.message}`); setSaving(false); return }
     if (validP.length > 0) {
-      await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
+      const { error: insPErr } = await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
         entrega_id: entregaId,
         setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
+      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); setSaving(false); return }
     }
 
-    await auditLog('update', 'entrega', entregaId, null, { nome: editForm.nome, status: editForm.status })
+    await auditLog('update', 'entrega', entregaId, anteriorE, novosDadosE)
     setEditingEntrega(null); setSaving(false); loadAll()
   }
 
   async function deleteEntrega(e: any) {
+    if (needsApproval) {
+      if (hasPendingSolicitacao('entrega', e.id)) {
+        alert('Já existe uma solicitação pendente para esta entrega. Aguarde a avaliação.')
+        return
+      }
+      if (!confirm(`Solicitar exclusão da entrega "${e.nome}"?\n\nA solicitação será enviada para avaliação.`)) return
+      await criarSolicitacao('entrega', e.id, e.nome, 'exclusao', null)
+      loadAll(); return
+    }
+
     if (!confirm(`Excluir a entrega "${e.nome}"?\n\nTodas as atividades desta entrega serão excluídas.`)) return
     await auditLog('delete', 'entrega', e.id, { nome: e.nome }, null)
     await supabase.from('entregas').delete().eq('id', e.id)
@@ -285,6 +409,11 @@ export default function ProjetoDetalhePage() {
 
   async function saveEditAtividade(ativId: number, entregaId: number) {
     setSaving(true)
+    const isNew = editForm._isNew
+
+    // Validações básicas
+    if (!editForm.nome?.trim()) { alert('Preencha o nome da atividade.'); setSaving(false); return }
+    if (!editForm.descricao?.trim()) { alert('Preencha a descrição da atividade.'); setSaving(false); return }
 
     // Validate date <= entrega quinzena
     if (editForm.data_prevista && editForm.entrega_data_final && editForm.data_prevista > editForm.entrega_data_final) {
@@ -292,8 +421,17 @@ export default function ProjetoDetalhePage() {
       setSaving(false); return
     }
 
+    // Validate: participantes com papel preenchido
+    const allP = editForm.participantes || []
+    for (const p of allP) {
+      if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
+        alert('Preencha o papel de todos os participantes.')
+        setSaving(false); return
+      }
+    }
+    const validP = allP.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
+
     // Validate: participantes are subset of entrega
-    const validP = editForm.participantes.filter((p: any) => p.papel?.trim())
     const entregaKeys = new Set((editForm.entrega_participantes || []).map((ep: any) =>
       ep.tipo_participante === 'setor' ? `s_${ep.setor_id}` : ep.tipo_participante))
     for (const ap of validP) {
@@ -311,40 +449,96 @@ export default function ProjetoDetalhePage() {
       setSaving(false); return
     }
 
-    const { error } = await supabase.from('atividades').update({
-      nome: editForm.nome, descricao: editForm.descricao,
+    if (needsApproval && !isNew) {
+      if (hasPendingSolicitacao('atividade', ativId)) {
+        alert('Já existe uma solicitação pendente para esta atividade. Aguarde a avaliação.')
+        setSaving(false); return
+      }
+      const ativ = projeto.entregas?.flatMap((e: any) => e.atividades || []).find((a: any) => a.id === ativId)
+      const dados = {
+        nome: editForm.nome, descricao: editForm.descricao,
+        data_prevista: editForm.data_prevista || null,
+        status: editForm.status, motivo_status: editForm.motivo_status || null,
+        participantes: validP.map((p: any) => ({
+          setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+          tipo_participante: p.tipo_participante, papel: p.papel.trim()
+        })),
+      }
+      const ok = await criarSolicitacao('atividade', ativId, ativ?.nome || editForm.nome, 'edicao', dados)
+      if (ok) { setEditingAtividade(null); loadAll() }
+      setSaving(false); return
+    }
+
+    const novosDadosA = {
+      nome: editForm.nome.trim(), descricao: editForm.descricao.trim(),
       data_prevista: editForm.data_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null
-    }).eq('id', ativId)
-    if (error) { alert(error.message); setSaving(false); return }
+    }
 
-    await supabase.from('atividade_participantes').delete().eq('atividade_id', ativId)
+    let realAtivId = ativId
+    if (isNew) {
+      // Criar atividade no banco
+      const { data: newAtiv, error } = await supabase.from('atividades').insert({
+        entrega_id: entregaId, ...novosDadosA
+      }).select().single()
+      if (error) { alert(error.message); setSaving(false); return }
+      realAtivId = newAtiv.id
+      await auditLog('create', 'atividade', realAtivId, null, novosDadosA)
+    } else {
+      const ativAtual = projeto.entregas?.flatMap((e: any) => e.atividades || []).find((a: any) => a.id === ativId)
+      const anteriorA = {
+        nome: ativAtual?.nome, descricao: ativAtual?.descricao,
+        data_prevista: ativAtual?.data_prevista, status: ativAtual?.status, motivo_status: ativAtual?.motivo_status,
+      }
+      const { error } = await supabase.from('atividades').update(novosDadosA).eq('id', ativId)
+      if (error) { alert(error.message); setSaving(false); return }
+      await auditLog('update', 'atividade', ativId, anteriorA, novosDadosA)
+    }
+
+    if (!isNew) {
+      const { error: delAPErr } = await supabase.from('atividade_participantes').delete().eq('atividade_id', realAtivId)
+      if (delAPErr) { alert(`Erro ao atualizar participantes: ${delAPErr.message}`); setSaving(false); return }
+    }
     if (validP.length > 0) {
-      await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
-        atividade_id: ativId,
+      const { error: insAPErr } = await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
+        atividade_id: realAtivId,
         setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
+      if (insAPErr) { alert(`Erro ao salvar participantes: ${insAPErr.message}`); setSaving(false); return }
     }
 
-    await auditLog('update', 'atividade', ativId, null, { nome: editForm.nome })
     setEditingAtividade(null); setSaving(false); loadAll()
   }
 
   async function deleteAtividade(a: any) {
+    if (needsApproval) {
+      if (hasPendingSolicitacao('atividade', a.id)) {
+        alert('Já existe uma solicitação pendente para esta atividade. Aguarde a avaliação.')
+        return
+      }
+      if (!confirm(`Solicitar exclusão da atividade "${a.nome}"?\n\nA solicitação será enviada para avaliação.`)) return
+      await criarSolicitacao('atividade', a.id, a.nome, 'exclusao', null)
+      loadAll(); return
+    }
+
     if (!confirm(`Excluir a atividade "${a.nome}"?`)) return
     await auditLog('delete', 'atividade', a.id, { nome: a.nome }, null)
     await supabase.from('atividades').delete().eq('id', a.id)
     loadAll()
   }
 
-  async function addNewAtividade(entregaId: number) {
-    const { data, error } = await supabase.from('atividades').insert({
-      entrega_id: entregaId, nome: 'Nova atividade', descricao: 'Descreva esta atividade'
-    }).select().single()
-    if (error) { alert(error.message); return }
-    await auditLog('create', 'atividade', data.id, null, { nome: 'Nova atividade' })
-    loadAll()
+  function addNewAtividade(entregaId: number) {
+    const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
+    setEditForm({
+      nome: '', descricao: '', data_prevista: '',
+      status: 'aberta', motivo_status: '',
+      entrega_data_final: entrega?.data_final_prevista || '',
+      entrega_participantes: entrega?.entrega_participantes || [],
+      participantes: [],
+      _isNew: true, _entregaId: entregaId
+    })
+    setEditingAtividade(-entregaId) // Negativo para indicar nova atividade
   }
 
   function formatQuinzena(dateStr: string | null) {
@@ -456,8 +650,8 @@ export default function ProjetoDetalhePage() {
                 className="input-field text-sm resize-none" rows={3} placeholder="Descrição (O quê)" />
               <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
                 className="input-field text-sm resize-none" rows={3} placeholder="Problema que soluciona (Por quê)" />
-              <input type="text" value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
-                className="input-field text-sm" placeholder="Indicador de sucesso (opcional)" />
+              <textarea value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
+                className="input-field text-sm resize-none" rows={2} placeholder="Indicador de sucesso (opcional)" />
               <div className="max-h-40 overflow-y-auto border rounded-lg p-2">
                 {acoes.map((a: any) => (
                   <label key={a.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
@@ -504,6 +698,9 @@ export default function ProjetoDetalhePage() {
                     </span>
                   </div>
                 </div>
+                {hasPendingSolicitacao('projeto', projeto.id) && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando aprovação</span>
+                )}
                 {canEdit && (
                   <div className="flex gap-2 shrink-0">
                     <button onClick={startEditProjeto} className="text-gray-400 hover:text-orange-500" title="Editar"><Edit3 size={18} /></button>
@@ -596,6 +793,9 @@ export default function ProjetoDetalhePage() {
                     <h3 className="text-sm font-semibold text-gray-800">{e.nome}</h3>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${st.bg} ${st.color}`}>{st.label}</span>
                     {isAtrasada && <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">Atrasada</span>}
+                    {hasPendingSolicitacao('entrega', e.id) && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando aprovação</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                     {e.data_final_prevista && <span>Prazo: {formatQuinzena(e.data_final_prevista)}</span>}
@@ -607,8 +807,8 @@ export default function ProjetoDetalhePage() {
                     <>
                       <button onClick={(ev) => { ev.stopPropagation(); isEditing ? setEditingEntrega(null) : startEditEntrega(e) }}
                         className="text-gray-400 hover:text-orange-500"><Edit3 size={15} /></button>
-                      <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
-                        className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>
+                      {canEdit && <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
+                        className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>}
                     </>
                   )}
                   {expanded[e.id] ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
@@ -620,6 +820,7 @@ export default function ProjetoDetalhePage() {
                 <div className={`border-t p-4 ${isEditing ? 'border-blue-200 bg-blue-50/30' : 'border-gray-100'}`}>
                   {isEditing ? (
                     <div className="space-y-3">
+                      {(() => { return (<>
                       <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
                         className="input-field text-sm" placeholder="Nome" />
                       <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
@@ -650,9 +851,9 @@ export default function ProjetoDetalhePage() {
                         {/* Quinzena — compacto */}
                         <div className="w-[180px]">
                           <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
-                          <select value={editForm.data_final_prevista} disabled={!canEditDates}
+                          <select value={editForm.data_final_prevista}
                             onChange={ev => setEditForm({ ...editForm, data_final_prevista: ev.target.value })}
-                            className={`w-full input-field text-xs ${!canEditDates ? 'opacity-50' : ''}`}>
+                            className="w-full input-field text-xs">
                             <option value="">Sem prazo</option>
                             {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
                           </select>
@@ -666,9 +867,9 @@ export default function ProjetoDetalhePage() {
                         </div>
                       </div>
                       <div>
-                        <input type="text" value={editForm.dependencias_criticas}
+                        <textarea value={editForm.dependencias_criticas}
                           onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                          placeholder="Dependências críticas" className="input-field text-xs" />
+                          placeholder="Dependências críticas" className="input-field text-xs resize-none" rows={2} />
                         <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                       </div>
 
@@ -698,6 +899,7 @@ export default function ProjetoDetalhePage() {
                         <button onClick={() => setEditingEntrega(null)}
                           className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
                       </div>
+                      </>)})()}
                     </div>
                   ) : (
                     <div>
@@ -727,7 +929,7 @@ export default function ProjetoDetalhePage() {
                       <div className="border-t border-gray-100 pt-3 mt-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Atividades</span>
-                          {canCreateAtividade && (
+                          {canCreate && (
                             <button onClick={() => addNewAtividade(e.id)}
                               className="text-[11px] text-orange-500 hover:text-orange-700 font-medium flex items-center gap-1">
                               <ListPlus size={13} /> Atividade
@@ -750,6 +952,7 @@ export default function ProjetoDetalhePage() {
                               <div className={`rounded-lg p-3 ${isEditA ? 'bg-blue-50 border border-blue-300 ring-1 ring-blue-100' : 'bg-gray-50'}`}>
                               {isEditA ? (
                                 <div className="space-y-2">
+                                  {(() => { return (<>
                                   <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
                                     className="input-field text-xs" placeholder="Nome" />
                                   <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
@@ -776,7 +979,6 @@ export default function ProjetoDetalhePage() {
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
                                       <input type="date" value={editForm.data_prevista || ''}
                                         max={editForm.entrega_data_final || undefined}
-                                        disabled={!canEditAtividadeDates}
                                         onChange={ev => {
                                           const nd = ev.target.value
                                           if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
@@ -785,7 +987,7 @@ export default function ProjetoDetalhePage() {
                                           }
                                           setEditForm({ ...editForm, data_prevista: nd })
                                         }}
-                                        className={`w-full input-field text-xs ${!canEditAtividadeDates ? 'opacity-50' : ''}`} />
+                                        className="w-full input-field text-xs" />
                                     </div>
 
                                     {/* Motivo — flex */}
@@ -796,6 +998,7 @@ export default function ProjetoDetalhePage() {
                                     </div>
                                   </div>
 
+                                  {(
                                   <div>
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] font-medium text-gray-500">Participantes</span>
@@ -817,6 +1020,8 @@ export default function ProjetoDetalhePage() {
                                       )
                                     )}
                                   </div>
+                                  )}
+                                  </>)})()}
                                   <div className="flex gap-2">
                                     <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}
                                       className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
@@ -840,6 +1045,9 @@ export default function ProjetoDetalhePage() {
                                       {a.data_prevista && a.status !== 'resolvida' && a.status !== 'cancelada' && new Date(a.data_prevista) < new Date(new Date().toDateString()) && (
                                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700">Atrasada</span>
                                       )}
+                                      {hasPendingSolicitacao('atividade', a.id) && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando</span>
+                                      )}
                                     </div>
                                     <p className="text-xs text-gray-500">{a.descricao}</p>
                                     {a.motivo_status && <p className="text-[10px] text-gray-400 italic">Motivo: {a.motivo_status}</p>}
@@ -860,7 +1068,7 @@ export default function ProjetoDetalhePage() {
                                     )}
                                   </div>
                                   </div>
-                                  {canEditAtividade && (
+                                  {canEdit && (
                                     <div className="flex gap-1.5 shrink-0 ml-2">
                                       <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500"><Edit3 size={13} /></button>
                                       <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
@@ -872,6 +1080,81 @@ export default function ProjetoDetalhePage() {
                             </div>
                           )
                         })}
+
+                        {/* Formulário de nova atividade */}
+                        {editingAtividade === -e.id && (
+                          <div className="mt-3">
+                            <div className="rounded-lg p-3 bg-blue-50 border border-blue-300 ring-1 ring-blue-100">
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold text-blue-700 mb-1">Nova atividade</p>
+                                <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
+                                  className="input-field text-xs" placeholder="Nome da atividade" />
+                                <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
+                                  className="input-field text-xs" placeholder="Descrição" />
+                                <div className="flex flex-wrap items-end gap-2">
+                                  <div className="w-[140px]">
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
+                                    <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                                      className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                        editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                        editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                        editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                        'border-gray-300 bg-white text-gray-700'
+                                      }`}>
+                                      {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                    </select>
+                                  </div>
+                                  <div className="w-[140px]">
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                    <input type="date" value={editForm.data_prevista || ''}
+                                      max={editForm.entrega_data_final || undefined}
+                                      onChange={ev => {
+                                        const nd = ev.target.value
+                                        if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
+                                          alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+                                          return
+                                        }
+                                        setEditForm({ ...editForm, data_prevista: nd })
+                                      }}
+                                      className="w-full input-field text-xs" />
+                                  </div>
+                                  <div className="flex-1 min-w-[140px]">
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
+                                    <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                                      placeholder="Opcional" className="input-field text-xs" />
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-medium text-gray-500">Participantes</span>
+                                    <button type="button" onClick={() => {
+                                      if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
+                                      setEditForm((prev: any) => ({
+                                        ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                                      }))
+                                    }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
+                                  </div>
+                                  {editForm.participantes?.map((p: any, i: number) =>
+                                    renderAtividadeParticipanteEditRow(p, i, editForm.participantes, editForm.entrega_participantes || [],
+                                      (idx, f, v) => setEditForm((prev: any) => ({
+                                        ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
+                                      })),
+                                      (idx) => { if (confirm('Remover participante?')) setEditForm((prev: any) => ({
+                                        ...prev, participantes: prev.participantes.filter((_: any, j: number) => j !== idx)
+                                      })) }
+                                    )
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <button onClick={() => saveEditAtividade(-e.id, e.id)} disabled={saving}
+                                    className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
+                                  <button onClick={() => setEditingAtividade(null)}
+                                    className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -881,6 +1164,58 @@ export default function ProjetoDetalhePage() {
           )
         })}
       </div>
+
+      {/* Solicitações pendentes do gestor */}
+      {needsApproval && solicitacoes.filter(s => s.status === 'em_analise').length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-lg font-bold text-gray-700 mb-3">Suas solicitações pendentes</h2>
+          <div className="space-y-2">
+            {solicitacoes.filter(s => s.status === 'em_analise').map((s: any) => (
+              <div key={s.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-medium text-amber-800">
+                    {s.tipo_operacao === 'edicao' ? 'Edição' : 'Exclusão'} de {s.tipo_entidade}
+                  </span>
+                  <span className="text-xs text-gray-600 ml-2">"{s.entidade_nome}"</span>
+                  <span className="text-[10px] text-gray-400 ml-2">
+                    {new Date(s.created_at).toLocaleDateString('pt-BR')} {new Date(s.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <button onClick={() => cancelarSolicitacao(s.id)}
+                  className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1">
+                  <X size={12} /> Cancelar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Solicitações resolvidas (para referência) */}
+      {needsApproval && solicitacoes.filter(s => s.status !== 'em_analise').length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-gray-500 mb-2">Histórico de solicitações</h3>
+          <div className="space-y-1">
+            {solicitacoes.filter(s => s.status !== 'em_analise').slice(0, 10).map((s: any) => (
+              <div key={s.id} className="bg-gray-50 border border-gray-200 rounded-lg p-2 flex items-center gap-3 text-xs">
+                <span className={`px-2 py-0.5 rounded-full font-medium ${
+                  s.status === 'deferida' ? 'bg-green-100 text-green-700' :
+                  s.status === 'indeferida' ? 'bg-red-100 text-red-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {s.status === 'deferida' ? 'Aprovada' : s.status === 'indeferida' ? 'Recusada' : 'Cancelada'}
+                </span>
+                <span className="text-gray-600">
+                  {s.tipo_operacao === 'edicao' ? 'Edição' : 'Exclusão'} de {s.tipo_entidade}: "{s.entidade_nome}"
+                </span>
+                {s.justificativa_avaliador && (
+                  <span className="text-gray-400 italic">— {s.justificativa_avaliador}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -895,76 +1230,97 @@ function GanttChart({ entregas }: { entregas: any[] }) {
 
   const now = new Date()
   now.setHours(0, 0, 0, 0)
+  const DAY = 1000 * 60 * 60 * 24
 
-  // Find min and max dates
-  const dates = withDate.map((e: any) => new Date(e.data_final_prevista + 'T00:00:00'))
-  const minDate = new Date(Math.min(...dates.map(d => d.getTime()), now.getTime()))
-  const maxDate = new Date(Math.max(...dates.map(d => d.getTime()), now.getTime()))
-
-  // Extend range by 15 days on each side
-  minDate.setDate(1)
-  maxDate.setMonth(maxDate.getMonth() + 1, 0)
-
-  const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24))
-
-  // Generate month labels
-  const months: { label: string; left: number; width: number }[] = []
-  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-  const cur = new Date(minDate)
-  while (cur <= maxDate) {
-    const monthStart = new Date(cur)
-    const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
-    const left = Math.max(0, (monthStart.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100
-    const right = Math.min(totalDays, (monthEnd.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100
-    months.push({ label: `${meses[cur.getMonth()]}/${cur.getFullYear().toString().slice(-2)}`, left, width: right - left })
-    cur.setMonth(cur.getMonth() + 1, 1)
+  const fmtShort = (d: Date) => {
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    return `${dd}/${mm}`
   }
 
-  const todayPos = ((now.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100
+  // Data de início de cada entrega: atividade mais cedo ou hoje
+  const getStart = (e: any) => {
+    const ativDates = (e.atividades || [])
+      .filter((a: any) => a.data_prevista)
+      .map((a: any) => new Date(a.data_prevista + 'T00:00:00').getTime())
+    return new Date(ativDates.length > 0 ? Math.min(...ativDates) : now.getTime())
+  }
+
+  // Calcular range global com margem
+  const allStarts = withDate.map(e => getStart(e).getTime())
+  const allEnds = withDate.map((e: any) => new Date(e.data_final_prevista + 'T00:00:00').getTime())
+  const rangeMin = new Date(Math.min(...allStarts, ...allEnds, now.getTime()))
+  const rangeMax = new Date(Math.max(...allStarts, ...allEnds, now.getTime()))
+  // Margem de 7 dias antes e depois
+  const minDate = new Date(rangeMin.getTime() - 7 * DAY)
+  const maxDate = new Date(rangeMax.getTime() + 14 * DAY)
+  const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / DAY)
+  const toPos = (d: Date) => ((d.getTime() - minDate.getTime()) / DAY) / totalDays * 100
+
+  // Meses para grid
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+  const months: { label: string; pos: number }[] = []
+  const cur = new Date(minDate.getFullYear(), minDate.getMonth() + 1, 1)
+  while (cur <= maxDate) {
+    months.push({ label: `${meses[cur.getMonth()]}/${String(cur.getFullYear()).slice(-2)}`, pos: toPos(cur) })
+    cur.setMonth(cur.getMonth() + 1)
+  }
+
+  const todayPos = toPos(now)
+  const rowH = 32
 
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[500px]">
-        {/* Month labels */}
-        <div className="relative h-6 mb-1">
+        <div className="relative" style={{ height: `${withDate.length * rowH + 24}px` }}>
+
+          {/* Grid vertical — divisórias de mês */}
           {months.map((m, i) => (
-            <div key={i} className="absolute text-[10px] text-gray-500 font-medium"
-              style={{ left: `${m.left}%`, width: `${m.width}%` }}>
-              <span className="px-1">{m.label}</span>
+            <div key={i} className="absolute top-0 bottom-0" style={{ left: `${m.pos}%` }}>
+              <div className="w-px h-full bg-gray-200" />
+              <span className="absolute -top-0.5 translate-x-1 text-[9px] text-gray-400 font-medium whitespace-nowrap">{m.label}</span>
             </div>
           ))}
-        </div>
 
-        {/* Bars */}
-        <div className="relative space-y-2">
-          {/* Today line */}
-          <div className="absolute top-0 bottom-0 w-px bg-orange-400 z-10" style={{ left: `${todayPos}%` }}>
-            <div className="absolute -top-5 -translate-x-1/2 text-[9px] text-orange-500 font-bold whitespace-nowrap">hoje</div>
+          {/* Linha "hoje" */}
+          <div className="absolute top-0 bottom-0 z-20" style={{ left: `${todayPos}%` }}>
+            <div className="w-0.5 h-full bg-orange-400 opacity-70" />
+            <span className="absolute -top-0.5 -translate-x-1/2 text-[9px] text-orange-500 font-bold">hoje</span>
           </div>
 
-          {withDate.map((e: any) => {
-            const eDate = new Date(e.data_final_prevista + 'T00:00:00')
-            const isAtrasada = e.status !== 'resolvida' && e.status !== 'cancelada' && eDate < now
+          {/* Barras */}
+          {withDate.map((e: any, i: number) => {
+            const startDate = getStart(e)
+            const endDate = new Date(e.data_final_prevista + 'T00:00:00')
+            const isAtrasada = e.status !== 'resolvida' && e.status !== 'cancelada' && endDate < now
             const isResolvida = e.status === 'resolvida'
-            const pos = ((eDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100
-            // Bar from project start (minDate) to deadline
-            const barWidth = Math.max(2, pos)
 
-            let barColor = 'bg-blue-400'
-            if (isResolvida) barColor = 'bg-green-400'
-            else if (isAtrasada) barColor = 'bg-red-400'
+            const left = toPos(startDate)
+            const right = toPos(endDate)
+            const width = Math.max(1.5, right - left)
+
+            const color = isResolvida ? 'bg-green-400' : isAtrasada ? 'bg-red-400' : 'bg-blue-400'
+            const textColor = isAtrasada ? 'text-red-700' : 'text-gray-600'
+            const top = 20 + i * rowH
 
             return (
-              <div key={e.id} className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-600 font-medium w-32 truncate shrink-0">{e.nome}</span>
-                <div className="flex-1 relative h-5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${barWidth}%` }} />
-                  {/* Deadline marker */}
-                  <div className="absolute top-0 bottom-0 w-0.5 bg-gray-400" style={{ left: `${pos}%` }} />
+              <div key={e.id} className="absolute flex items-center" style={{ top: `${top}px`, left: 0, right: 0, height: `${rowH - 4}px` }}>
+                {/* Barra */}
+                <div className={`absolute h-5 rounded ${color} opacity-80`}
+                  style={{ left: `${left}%`, width: `${width}%` }}>
+                  {/* Rótulo de início dentro/ao lado esquerdo da barra */}
+                  <span className="absolute -top-3.5 left-0 text-[8px] text-gray-500 whitespace-nowrap">
+                    {fmtShort(startDate)}
+                  </span>
+                  {/* Rótulo de fim dentro/ao lado direito da barra */}
+                  <span className={`absolute -top-3.5 right-0 text-[8px] font-medium whitespace-nowrap ${textColor}`}>
+                    {fmtShort(endDate)}
+                  </span>
+                  {/* Nome da entrega dentro da barra */}
+                  <span className="absolute inset-0 flex items-center px-1.5 text-[10px] font-medium text-white truncate drop-shadow-sm">
+                    {e.nome}
+                  </span>
                 </div>
-                <span className={`text-[10px] shrink-0 w-20 text-right ${isAtrasada ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                  {formatQ(e.data_final_prevista)}
-                </span>
               </div>
             )
           })}

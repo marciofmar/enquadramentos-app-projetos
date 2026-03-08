@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Check, X, MessageSquare, Users, FileEdit, Save, ChevronDown, ChevronUp, ExternalLink, Settings, History, Building2, Plus, AlertTriangle, ArrowRight, Edit3, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, X, MessageSquare, Users, FileEdit, Save, ChevronDown, ChevronUp, ExternalLink, Settings, History, Building2, Plus, AlertTriangle, ArrowRight, Edit3, Trash2, ClipboardList } from 'lucide-react'
 import { STATUS_CONFIG, BLOCO_LABELS } from '@/lib/utils'
 import type { Profile } from '@/lib/types'
 
-type AdminTab = 'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'log'
+type AdminTab = 'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'solicitacoes' | 'log'
 
 // Tabs acessíveis pelo perfil master (gestão de projetos)
-const MASTER_TABS: AdminTab[] = ['config', 'log']
+const MASTER_TABS: AdminTab[] = ['config', 'solicitacoes', 'log']
 
 export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>('observacoes')
@@ -26,8 +26,8 @@ export default function AdminPage() {
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (!data || (data.role !== 'admin' && data.role !== 'master')) { router.push('/dashboard'); return }
       setProfile(data)
-      // Master inicia na tab config (primeira tab acessível)
-      if (data.role === 'master') setTab('config')
+      // Master inicia na tab solicitações
+      if (data.role === 'master') setTab('solicitacoes')
       setLoading(false)
     }
     check()
@@ -43,6 +43,7 @@ export default function AdminPage() {
     { key: 'usuarios' as const, label: 'Usuários', icon: Users },
     { key: 'setores' as const, label: 'Setores', icon: Building2 },
     { key: 'config' as const, label: 'Configurações', icon: Settings },
+    { key: 'solicitacoes' as const, label: 'Solicitações', icon: ClipboardList },
     { key: 'log' as const, label: 'Log de Alterações', icon: History },
   ]
 
@@ -73,6 +74,7 @@ export default function AdminPage() {
       {tab === 'usuarios' && <UsuariosAdmin />}
       {tab === 'setores' && <SetoresAdmin />}
       {tab === 'config' && <ConfiguracoesAdmin isMaster={isMaster} />}
+      {tab === 'solicitacoes' && <SolicitacoesAdmin />}
       {tab === 'log' && <AuditLogAdmin />}
     </div>
   )
@@ -1050,13 +1052,26 @@ function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
     setSaving(chave)
 
     const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('configuracoes').update({
-      valor: novoValor,
-      atualizado_por: user?.id,
-    }).eq('chave', chave)
+    const { data: updated, error } = await supabase.from('configuracoes')
+      .update({ valor: novoValor, atualizado_por: user?.id })
+      .eq('chave', chave)
+      .select()
 
     if (error) {
       alert(`Erro: ${error.message}`)
+    } else if (!updated || updated.length === 0) {
+      // Chave não existe no banco — tenta inserir
+      const { error: insErr } = await supabase.from('configuracoes')
+        .insert({ chave, valor: novoValor, atualizado_por: user?.id })
+      if (insErr) {
+        // Se INSERT falhar por RLS, rodar no Supabase SQL Editor:
+        // CREATE POLICY "config_insert_admin" ON configuracoes FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin','master')));
+        alert('Não foi possível salvar. Execute a migração "participantes_rls_e_config_aprovacao" no banco de dados.')
+      } else {
+        setConfigs(prev => ({ ...prev, [chave]: novoValor }))
+        setSaved(chave)
+        setTimeout(() => setSaved(null), 2000)
+      }
     } else {
       setConfigs(prev => ({ ...prev, [chave]: novoValor }))
       setSaved(chave)
@@ -1134,6 +1149,18 @@ function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
           descricao: 'Quando desligado, as datas das atividades ficam travadas para gestores, mesmo que a edição geral esteja habilitada. Admins sempre podem alterar.',
           ligado: 'Gestores podem alterar datas',
           desligado: 'Datas travadas para gestores',
+        },
+      ],
+    },
+    {
+      grupo: 'Módulo de Projetos — Fluxo de Aprovação',
+      toggles: [
+        {
+          chave: 'proj_exigir_aprovacao_edicao',
+          titulo: 'Exigir aprovação para edições/exclusões de gestores',
+          descricao: 'Quando ligado, as edições e exclusões feitas por gestores ficam pendentes de aprovação pelo Gabinete de Gestão de Projetos. Quando desligado, gestores podem editar/excluir diretamente sem enviar solicitação.',
+          ligado: 'Gestores precisam de aprovação',
+          desligado: 'Gestores editam/excluem diretamente',
         },
       ],
     },
@@ -1535,6 +1562,321 @@ function SetoresAdmin() {
 // LOG DE ALTERAÇÕES (AUDITORIA)
 // ============================================================
 
+function SolicitacoesAdmin() {
+  const [solicitacoes, setSolicitacoes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterStatus, setFilterStatus] = useState('em_analise')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [justificativa, setJustificativa] = useState('')
+  const [processing, setProcessing] = useState(false)
+  const [dadosAtuais, setDadosAtuais] = useState<Record<string, any>>({})
+  const supabase = createClient()
+
+  useEffect(() => { loadSolicitacoes() }, [filterStatus])
+
+  async function loadSolicitacoes() {
+    setLoading(true)
+    let query = supabase.from('solicitacoes_alteracao')
+      .select('*, projeto:projeto_id(nome)')
+      .order('created_at', { ascending: false })
+    if (filterStatus) query = query.eq('status', filterStatus)
+    const { data } = await query
+    if (data) {
+      setSolicitacoes(data)
+      // Carregar dados atuais das entidades para comparação (apenas em_analise com edição)
+      const pendentes = data.filter(s => s.status === 'em_analise' && s.tipo_operacao === 'edicao')
+      const atuais: Record<string, any> = {}
+      for (const s of pendentes) {
+        const table = s.tipo_entidade === 'projeto' ? 'projetos' : s.tipo_entidade === 'entrega' ? 'entregas' : 'atividades'
+        const { data: atual } = await supabase.from(table).select('*').eq('id', s.entidade_id).single()
+        if (atual) atuais[`${s.tipo_entidade}_${s.entidade_id}`] = atual
+      }
+      setDadosAtuais(atuais)
+    }
+    setLoading(false)
+  }
+
+  async function avaliar(sol: any, status: 'deferida' | 'indeferida') {
+    setProcessing(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setProcessing(false); return }
+    const { data: profile } = await supabase.from('profiles').select('nome').eq('id', user.id).single()
+
+    // Atualizar status da solicitação
+    const { error: updateErr } = await supabase.from('solicitacoes_alteracao').update({
+      status,
+      avaliador_id: user.id,
+      avaliador_nome: profile?.nome || '',
+      justificativa_avaliador: justificativa.trim() || null,
+      avaliado_em: new Date().toISOString(),
+    }).eq('id', sol.id)
+
+    if (updateErr) { alert(`Erro: ${updateErr.message}`); setProcessing(false); return }
+
+    // Se deferida, aplicar as alterações
+    if (status === 'deferida') {
+      const ok = await aplicarAlteracao(sol, user.id, profile?.nome || '')
+      if (!ok) {
+        // Reverter status se falhou
+        await supabase.from('solicitacoes_alteracao').update({ status: 'em_analise', avaliador_id: null, avaliador_nome: null, justificativa_avaliador: null, avaliado_em: null }).eq('id', sol.id)
+        setProcessing(false); return
+      }
+    }
+
+    setExpandedId(null)
+    setJustificativa('')
+    setProcessing(false)
+    loadSolicitacoes()
+    window.dispatchEvent(new Event('solicitacao-updated'))
+  }
+
+  async function aplicarAlteracao(sol: any, avaliadorId: string, avaliadorNome: string) {
+    const dados = sol.dados_alteracao
+
+    if (sol.tipo_operacao === 'exclusao') {
+      const table = sol.tipo_entidade === 'projeto' ? 'projetos' : sol.tipo_entidade === 'entrega' ? 'entregas' : 'atividades'
+      // Audit log
+      await supabase.from('audit_log').insert({
+        usuario_id: avaliadorId, usuario_nome: avaliadorNome,
+        tipo_acao: 'delete', entidade: sol.tipo_entidade, entidade_id: sol.entidade_id,
+        conteudo_anterior: { nome: sol.entidade_nome, solicitante: sol.solicitante_nome }, conteudo_novo: null
+      })
+      const { error } = await supabase.from(table).delete().eq('id', sol.entidade_id)
+      if (error) { alert(`Erro ao excluir: ${error.message}`); return false }
+      return true
+    }
+
+    // Edição — buscar dados atuais antes de aplicar para registrar no audit_log
+    if (sol.tipo_entidade === 'projeto' && dados) {
+      const { data: atual } = await supabase.from('projetos').select('nome, descricao, problema_resolve, responsavel, indicador_sucesso, tipo_acao, setor_lider_id').eq('id', sol.entidade_id).single()
+      const { acoes, ...projetoData } = dados
+      const { error } = await supabase.from('projetos').update(projetoData).eq('id', sol.entidade_id)
+      if (error) { alert(`Erro ao atualizar projeto: ${error.message}`); return false }
+      if (acoes) {
+        await supabase.from('projeto_acoes').delete().eq('projeto_id', sol.entidade_id)
+        if (acoes.length > 0) {
+          await supabase.from('projeto_acoes').insert(
+            acoes.map((aid: number) => ({ projeto_id: sol.entidade_id, acao_estrategica_id: aid }))
+          )
+        }
+      }
+      await supabase.from('audit_log').insert({
+        usuario_id: avaliadorId, usuario_nome: avaliadorNome,
+        tipo_acao: 'update', entidade: 'projeto', entidade_id: sol.entidade_id,
+        conteudo_anterior: { ...atual, solicitante: sol.solicitante_nome }, conteudo_novo: projetoData
+      })
+      return true
+    }
+
+    if (sol.tipo_entidade === 'entrega' && dados) {
+      const { data: atual } = await supabase.from('entregas').select('nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status').eq('id', sol.entidade_id).single()
+      const { participantes, ...entregaData } = dados
+      const { error } = await supabase.from('entregas').update(entregaData).eq('id', sol.entidade_id)
+      if (error) { alert(`Erro ao atualizar entrega: ${error.message}`); return false }
+      if (participantes) {
+        await supabase.from('entrega_participantes').delete().eq('entrega_id', sol.entidade_id)
+        if (participantes.length > 0) {
+          await supabase.from('entrega_participantes').insert(
+            participantes.map((p: any) => ({ entrega_id: sol.entidade_id, ...p }))
+          )
+        }
+      }
+      await supabase.from('audit_log').insert({
+        usuario_id: avaliadorId, usuario_nome: avaliadorNome,
+        tipo_acao: 'update', entidade: 'entrega', entidade_id: sol.entidade_id,
+        conteudo_anterior: { ...atual, solicitante: sol.solicitante_nome }, conteudo_novo: entregaData
+      })
+      return true
+    }
+
+    if (sol.tipo_entidade === 'atividade' && dados) {
+      const { data: atual } = await supabase.from('atividades').select('nome, descricao, data_prevista, status, motivo_status').eq('id', sol.entidade_id).single()
+      const { participantes, ...atividadeData } = dados
+      const { error } = await supabase.from('atividades').update(atividadeData).eq('id', sol.entidade_id)
+      if (error) { alert(`Erro ao atualizar atividade: ${error.message}`); return false }
+      if (participantes) {
+        await supabase.from('atividade_participantes').delete().eq('atividade_id', sol.entidade_id)
+        if (participantes.length > 0) {
+          await supabase.from('atividade_participantes').insert(
+            participantes.map((p: any) => ({ atividade_id: sol.entidade_id, ...p }))
+          )
+        }
+      }
+      await supabase.from('audit_log').insert({
+        usuario_id: avaliadorId, usuario_nome: avaliadorNome,
+        tipo_acao: 'update', entidade: 'atividade', entidade_id: sol.entidade_id,
+        conteudo_anterior: { ...atual, solicitante: sol.solicitante_nome }, conteudo_novo: atividadeData
+      })
+      return true
+    }
+
+    return true
+  }
+
+  function formatDate(iso: string) {
+    const d = new Date(iso)
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    em_analise: { label: 'Em análise', color: 'bg-amber-100 text-amber-700' },
+    deferida: { label: 'Aprovada', color: 'bg-green-100 text-green-700' },
+    indeferida: { label: 'Recusada', color: 'bg-red-100 text-red-700' },
+    cancelada: { label: 'Cancelada', color: 'bg-gray-100 text-gray-600' },
+  }
+
+  const FIELD_LABELS: Record<string, string> = {
+    nome: 'Nome', descricao: 'Descrição', problema_resolve: 'Problema que resolve',
+    responsavel: 'Responsável', indicador_sucesso: 'Indicador de sucesso',
+    tipo_acao: 'Tipo de ação', setor_lider_id: 'Setor líder',
+    criterios_aceite: 'Critérios de aceite', dependencias_criticas: 'Dependências críticas',
+    data_final_prevista: 'Quinzena', status: 'Status', motivo_status: 'Motivo do status',
+    data_prevista: 'Data prevista',
+  }
+
+  function renderDados(dados: any, atual: any) {
+    if (!dados) return <span className="text-gray-300">—</span>
+    const entries = Object.entries(dados)
+    return (
+      <div className="text-xs space-y-1.5 mt-1">
+        {entries.map(([k, v]) => {
+          if (k === 'participantes' || k === 'acoes') return null
+          const valNovo = Array.isArray(v) ? (v as any[]).join(', ') : String(v ?? '—')
+          const valAtual = atual ? (Array.isArray(atual[k]) ? (atual[k] as any[]).join(', ') : String(atual[k] ?? '—')) : null
+          const changed = atual && valNovo !== valAtual
+          return (
+            <div key={k} className={`rounded px-2 py-1 ${changed ? 'bg-amber-50 border border-amber-200' : ''}`}>
+              <span className="font-medium text-gray-500">{FIELD_LABELS[k] || k}:</span>{' '}
+              {changed ? (
+                <>
+                  <span className="line-through text-red-400 mr-1">{valAtual!.substring(0, 80)}</span>
+                  <span className="text-green-700 font-medium">{valNovo.substring(0, 100)}</span>
+                </>
+              ) : (
+                <span className="text-gray-600">{valNovo.substring(0, 100)}{valNovo.length > 100 ? '...' : ''}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs w-44">
+          <option value="">Todas</option>
+          <option value="em_analise">Em análise</option>
+          <option value="deferida">Aprovadas</option>
+          <option value="indeferida">Recusadas</option>
+          <option value="cancelada">Canceladas</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Carregando...</div>
+      ) : solicitacoes.length === 0 ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Nenhuma solicitação encontrada.</div>
+      ) : (
+        <div className="space-y-3">
+          {solicitacoes.map(sol => {
+            const st = STATUS_LABELS[sol.status] || STATUS_LABELS.em_analise
+            const isExpanded = expandedId === sol.id
+            return (
+              <div key={sol.id} className={`bg-white rounded-xl border overflow-hidden ${sol.status === 'em_analise' ? 'border-amber-300' : 'border-gray-200'}`}>
+                <div className="p-4 cursor-pointer hover:bg-gray-50" onClick={() => { setExpandedId(isExpanded ? null : sol.id); setJustificativa('') }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
+                      <span className="text-xs font-medium text-gray-800">
+                        {sol.tipo_operacao === 'edicao' ? 'Edição' : 'Exclusão'} de {sol.tipo_entidade}
+                      </span>
+                      <span className="text-xs text-gray-500">"{sol.entidade_nome}"</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span>{sol.solicitante_nome}</span>
+                      <span>{formatDate(sol.created_at)}</span>
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-gray-100 p-4 bg-gray-50/50">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <span className="text-xs font-medium text-gray-500 block mb-1">Solicitante</span>
+                        <span className="text-sm text-gray-700">{sol.solicitante_nome}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-gray-500 block mb-1">Projeto</span>
+                        <span className="text-sm text-gray-700">{sol.projeto?.nome || `#${sol.projeto_id}`}</span>
+                      </div>
+                    </div>
+
+                    {sol.tipo_operacao === 'edicao' && sol.dados_alteracao && (
+                      <div className="mb-4">
+                        <span className="text-xs font-medium text-gray-500 block mb-1">Dados da alteração solicitada</span>
+                        <div className="bg-white rounded-lg border border-gray-200 p-3">
+                          {renderDados(sol.dados_alteracao, dadosAtuais[`${sol.tipo_entidade}_${sol.entidade_id}`])}
+                          {sol.dados_alteracao.participantes && (
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              <span className="font-medium text-gray-600">participantes:</span> {sol.dados_alteracao.participantes.length} participante(s)
+                            </div>
+                          )}
+                          {sol.dados_alteracao.acoes && (
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              <span className="font-medium text-gray-600">ações vinculadas:</span> {sol.dados_alteracao.acoes.length} ação(ões)
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {sol.tipo_operacao === 'exclusao' && (
+                      <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                        <span className="text-xs font-medium text-red-600">Solicita a exclusão permanente desta entidade e todos os seus dependentes.</span>
+                      </div>
+                    )}
+
+                    {sol.status === 'em_analise' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 block mb-1">Justificativa (opcional)</label>
+                          <input type="text" value={justificativa} onChange={e => setJustificativa(e.target.value)}
+                            placeholder="Motivo da decisão" className="input-field text-xs w-full" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => avaliar(sol, 'deferida')} disabled={processing}
+                            className="flex items-center gap-1 text-xs bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:opacity-50">
+                            <Check size={14} /> Aprovar e aplicar
+                          </button>
+                          <button onClick={() => avaliar(sol, 'indeferida')} disabled={processing}
+                            className="flex items-center gap-1 text-xs bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50">
+                            <X size={14} /> Recusar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {sol.status !== 'em_analise' && sol.avaliador_nome && (
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">Avaliado por:</span> {sol.avaliador_nome} em {formatDate(sol.avaliado_em)}
+                        {sol.justificativa_avaliador && <span className="ml-2 italic">— {sol.justificativa_avaliador}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuditLogAdmin() {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1579,15 +1921,92 @@ function AuditLogAdmin() {
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   }
 
-  function renderJson(obj: any) {
-    if (!obj) return <span className="text-gray-300">—</span>
-    const entries = Object.entries(obj).slice(0, 5)
+  const FIELD_LABELS: Record<string, string> = {
+    nome: 'Nome', descricao: 'Descrição', problema_resolve: 'Problema que resolve',
+    responsavel: 'Responsável', indicador_sucesso: 'Indicador de sucesso',
+    tipo_acao: 'Tipo de ação', setor_lider_id: 'Setor líder',
+    criterios_aceite: 'Critérios de aceite', dependencias_criticas: 'Dependências críticas',
+    data_final_prevista: 'Quinzena', status: 'Status', motivo_status: 'Motivo do status',
+    data_prevista: 'Data prevista', projeto_id: 'Projeto', solicitante: 'Solicitante',
+  }
+
+  function renderLogDetail(log: any) {
+    const anterior = log.conteudo_anterior
+    const novo = log.conteudo_novo
+
+    if (log.tipo_acao === 'create') {
+      return <span className="text-xs text-gray-600">{novo?.nome ? `"${novo.nome}"` : ''}</span>
+    }
+
+    if (log.tipo_acao === 'delete') {
+      return <span className="text-xs text-gray-600">{anterior?.nome ? `"${anterior.nome}"` : ''}</span>
+    }
+
+    // update
+    if (log.tipo_acao === 'update') {
+      const norm = (v: any) => {
+        if (v == null) return ''
+        if (Array.isArray(v)) return v.join(', ')
+        return String(v)
+      }
+      const nome = novo?.nome || anterior?.nome || ''
+      const solicitante = novo?.solicitante || anterior?.solicitante
+
+      // Campos comparáveis: usar apenas as chaves do novo (são os dados salvos)
+      const novoKeys = novo ? Object.keys(novo).filter(k => k !== 'solicitante') : []
+      const anteriorKeys = anterior ? Object.keys(anterior).filter(k => k !== 'solicitante') : []
+
+      // Se ambos têm campos reais, comparar e mostrar apenas diffs
+      const canCompare = anteriorKeys.length > 1 && novoKeys.length > 1
+      const changes: { key: string; from: string; to: string }[] = []
+
+      if (canCompare) {
+        const allKeys = new Set([...anteriorKeys, ...novoKeys])
+        allKeys.forEach(k => {
+          const vOld = norm(anterior[k])
+          const vNew = norm(novo[k])
+          if (vOld !== vNew) changes.push({ key: k, from: vOld, to: vNew })
+        })
+      }
+
+      return (
+        <div>
+          <span className="text-xs font-medium text-gray-700">"{nome}"</span>
+          {solicitante && <span className="text-[10px] text-gray-400 ml-2">via solicitação de {solicitante}</span>}
+          {canCompare && changes.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {changes.map(c => (
+                <div key={c.key} className="flex items-baseline gap-1.5 text-[11px] flex-wrap">
+                  <span className="font-semibold text-gray-500 shrink-0">{FIELD_LABELS[c.key] || c.key}:</span>
+                  <span className="text-red-400">{c.from || '(vazio)'}</span>
+                  <span className="text-gray-400">→</span>
+                  <span className="text-green-700 font-medium">{c.to || '(vazio)'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {canCompare && changes.length === 0 && (
+            <span className="text-[10px] text-gray-400 ml-2">Sem alterações detectadas</span>
+          )}
+          {!canCompare && novoKeys.length > 0 && (
+            <div className="mt-1 text-[10px] text-gray-500">
+              {novoKeys.slice(0, 4).map(k => (
+                <span key={k} className="mr-3">{FIELD_LABELS[k] || k}: {norm(novo[k]).substring(0, 50)}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // Fallback
+    const data = novo || anterior
+    if (!data) return <span className="text-gray-300">—</span>
     return (
       <div className="text-[10px] text-gray-500 space-y-0.5">
-        {entries.map(([k, v]) => (
-          <div key={k}><span className="font-medium text-gray-600">{k}:</span> {String(v).substring(0, 80)}{String(v).length > 80 ? '...' : ''}</div>
+        {Object.entries(data).slice(0, 4).map(([k, v]) => (
+          <div key={k}><span className="font-medium text-gray-600">{FIELD_LABELS[k] || k}:</span> {String(v).substring(0, 80)}</div>
         ))}
-        {Object.entries(obj).length > 5 && <div className="text-gray-400">+{Object.entries(obj).length - 5} campos</div>}
       </div>
     )
   }
@@ -1612,38 +2031,21 @@ function AuditLogAdmin() {
         <div className="text-center py-8 text-gray-400 text-sm">Nenhum registro encontrado.</div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Data</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Usuário</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Ação</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Entidade</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">ID</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Anterior</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Novo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map(log => {
-                  const tipo = TIPO_LABELS[log.tipo_acao] || { label: log.tipo_acao, color: 'bg-gray-100 text-gray-600' }
-                  return (
-                    <tr key={log.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDate(log.created_at)}</td>
-                      <td className="px-3 py-2 text-gray-700 font-medium">{log.usuario_nome || '—'}</td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${tipo.color}`}>{tipo.label}</span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">{ENTIDADE_LABELS[log.entidade] || log.entidade}</td>
-                      <td className="px-3 py-2 text-gray-400">#{log.entidade_id}</td>
-                      <td className="px-3 py-2 max-w-48">{renderJson(log.conteudo_anterior)}</td>
-                      <td className="px-3 py-2 max-w-48">{renderJson(log.conteudo_novo)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {logs.map(log => {
+              const tipo = TIPO_LABELS[log.tipo_acao] || { label: log.tipo_acao, color: 'bg-gray-100 text-gray-600' }
+              return (
+                <div key={log.id} className="bg-white rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-center gap-3 flex-wrap mb-2">
+                    <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(log.created_at)}</span>
+                    <span className="text-xs font-medium text-gray-700">{log.usuario_nome || '—'}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${tipo.color}`}>{tipo.label}</span>
+                    <span className="text-xs text-gray-500">{ENTIDADE_LABELS[log.entidade] || log.entidade} #{log.entidade_id}</span>
+                  </div>
+                  {renderLogDetail(log)}
+                </div>
+              )
+            })}
           </div>
 
           {/* Pagination */}

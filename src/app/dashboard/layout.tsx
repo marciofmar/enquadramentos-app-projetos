@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, Bell } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pendingSolicitacoes, setPendingSolicitacoes] = useState(0)
   const router = useRouter()
+  const pathname = usePathname()
   const supabase = createClient()
 
   useEffect(() => {
@@ -23,11 +25,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .eq('id', user.id)
         .single()
 
-      if (data) setProfile(data as any)
+      if (data) {
+        setProfile(data as any)
+      }
       setLoading(false)
     }
     load()
   }, [])
+
+  // Atualizar contagem de solicitações pendentes ao mudar de página ou voltar ao foco
+  useEffect(() => {
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'master')) return
+    async function refreshCount() {
+      const { count } = await supabase.from('solicitacoes_alteracao')
+        .select('*', { count: 'exact', head: true }).eq('status', 'em_analise')
+      setPendingSolicitacoes(count || 0)
+    }
+    refreshCount()
+    const onFocus = () => refreshCount()
+    const onSolicitacaoUpdate = () => refreshCount()
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('solicitacao-updated', onSolicitacaoUpdate)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('solicitacao-updated', onSolicitacaoUpdate)
+    }
+  }, [profile, pathname])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -75,18 +98,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <div className="flex items-center gap-4">
               {(profile?.role === 'admin' || profile?.role === 'master') && (
-                <button
-                  onClick={() => router.push('/admin')}
-                  className="flex items-center gap-1.5 text-gray-400 hover:text-orange-400 text-sm transition-colors"
-                >
-                  <Settings size={16} />
-                  <span className="hidden sm:inline">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  {pendingSolicitacoes > 0 && (
+                    <button onClick={() => router.push('/admin')}
+                      className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 text-xs transition-colors animate-pulse">
+                      <Bell size={14} />
+                      <span className="hidden sm:inline">{pendingSolicitacoes} solicitação(ões)</span>
+                      <span className="sm:hidden bg-amber-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitacoes}</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => router.push('/admin')}
+                    className="flex items-center gap-1.5 text-gray-400 hover:text-orange-400 text-sm transition-colors"
+                  >
+                    <Settings size={16} />
+                    <span className="hidden sm:inline">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
+                  </button>
+                </div>
               )}
 
               <div className="flex items-center gap-2 text-sm">
                 <User size={16} className="text-gray-400" />
-                <span className="hidden sm:inline text-gray-300">{profile?.nome}</span>
+                <div className="hidden sm:flex flex-col items-end leading-tight">
+                  <span className="text-gray-300 text-xs">{profile?.nome}</span>
+                  {(profile as any)?.setores?.codigo && (
+                    <span className="text-[10px] text-gray-500">{(profile as any).setores.codigo}</span>
+                  )}
+                </div>
                 <span className="text-xs bg-orange-600 px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
               </div>
 
