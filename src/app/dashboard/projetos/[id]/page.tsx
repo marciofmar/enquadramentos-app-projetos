@@ -52,6 +52,13 @@ export default function ProjetoDetalhePage() {
   const [acoes, setAcoes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  const formatDateBR = (dateStr: string | null) => {
+    if (!dateStr) return '-'
+    const partes = dateStr.includes('T') ? dateStr.split('T')[0].split('-') : dateStr.split('-')
+    if (partes.length !== 3) return dateStr
+    return `${partes[2]}/${partes[1]}/${partes[0]}`
+  }
+
   // Edit states
   const [editingProjeto, setEditingProjeto] = useState(false)
   const [editingEntrega, setEditingEntrega] = useState<number | null>(null)
@@ -935,9 +942,9 @@ export default function ProjetoDetalhePage() {
                         className="input-field text-sm resize-none" rows={2} placeholder="Descrição" />
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
-                        <input type="text" value={editForm.criterios_aceite || ''}
+                        <textarea value={editForm.criterios_aceite || ''}
                           onChange={ev => setEditForm({ ...editForm, criterios_aceite: ev.target.value })}
-                          placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs" />
+                          placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
                       </div>
 
                       <div className="flex flex-wrap items-end gap-3">
@@ -975,9 +982,10 @@ export default function ProjetoDetalhePage() {
                         </div>
                       </div>
                       <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
                         <textarea value={editForm.dependencias_criticas}
                           onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                          placeholder="Dependências críticas" className="input-field text-xs resize-none" rows={2} />
+                          placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
                         <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                       </div>
 
@@ -1013,10 +1021,31 @@ export default function ProjetoDetalhePage() {
                     <div>
                       <p className="text-sm text-gray-600 mb-3">{e.descricao}</p>
                       {e.criterios_aceite && (
-                        <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Critérios de aceite:</span> {e.criterios_aceite}</p>
+                        <div className="mb-3">
+                          <span className="text-sm font-semibold text-gray-700 block mb-1">Critérios de aceite:</span>
+                          <ul className="space-y-1">
+                            {e.criterios_aceite.split('\n').filter((l: string) => l.trim() !== '').map((line: string, i: number) => (
+                              <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                                <span className="text-gray-400 font-bold mt-0.5">•</span>
+                                <span className="leading-relaxed">{line}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
+                      
                       {e.dependencias_criticas && (
-                        <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Dependências:</span> {e.dependencias_criticas}</p>
+                        <div className="mb-3">
+                          <span className="text-sm font-semibold text-gray-700 block mb-1">Dependências críticas:</span>
+                          <ul className="space-y-1">
+                            {e.dependencias_criticas.split('\n').filter((l: string) => l.trim() !== '').map((line: string, i: number) => (
+                              <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                                <span className="text-gray-400 font-bold mt-0.5">•</span>
+                                <span className="leading-relaxed">{line}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {e.motivo_status && (
                         <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Motivo do status:</span> {e.motivo_status}</p>
@@ -1033,168 +1062,146 @@ export default function ProjetoDetalhePage() {
                         </div>
                       )}
 
-                      {/* Atividades */}
-                      <div className="border-t border-gray-100 pt-3 mt-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Atividades</span>
+                      {/* Atividades Nesting Container */}
+                      <div className="mt-5 bg-gray-50/70 border border-gray-200 rounded-xl p-4 ml-2 sm:ml-4 shadow-inner relative">
+                        {/* Indicador visual de aninhamento */}
+                        <div className="absolute -left-2 top-6 bottom-6 w-0.5 bg-gray-200 rounded-full hidden sm:block"></div>
+
+                        <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-2">
+                          <h4 className="text-sm font-bold text-gray-600 uppercase tracking-widest flex items-center gap-1.5">
+                            <ListPlus size={16} /> Atividades da Entrega
+                          </h4>
                           {canCreate && (
                             <button onClick={() => addNewAtividade(e.id)}
-                              className="text-[11px] text-orange-500 hover:text-orange-700 font-medium flex items-center gap-1">
-                              <ListPlus size={13} /> Atividade
+                              className="text-xs bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300 px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 transition-all shadow-sm">
+                              <Plus size={14} /> Adicionar
                             </button>
                           )}
                         </div>
 
                         {(!e.atividades || e.atividades.length === 0) && (
-                          <div className="flex items-start gap-2 text-xs text-gray-400 bg-gray-50 rounded p-2">
-                            <Info size={13} className="mt-0.5 shrink-0" />
-                            <span>Nenhuma atividade. Exemplos: reunião de brainstorm, pesquisa bibliográfica, levantamento de preços no mercado.</span>
+                          <div className="flex items-start gap-2 text-xs text-gray-500 bg-white border border-gray-100 shadow-sm rounded-lg p-3">
+                            <Info size={14} className="mt-0.5 text-blue-500 shrink-0" />
+                            <span>Nenhuma atividade cadastrada. Exemplos: reunião de alinhamento, pesquisa documental, elaboração de rascunho.</span>
                           </div>
                         )}
 
-                        {e.atividades?.map((a: any, ativIndex: number) => {
-                          const isEditA = editingAtividade === a.id
-                          return (
-                            <div key={a.id}>
-                              {ativIndex > 0 && <div className="border-t border-dashed border-gray-300 my-3" />}
-                              <div className={`rounded-lg p-3 ${isEditA ? 'bg-blue-50 border border-blue-300 ring-1 ring-blue-100' : 'bg-gray-50'}`}>
-                              {isEditA ? (
-                                <div className="space-y-2">
-                                  {(() => { return (<>
-                                  <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                                    className="input-field text-xs" placeholder="Nome" />
-                                  <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                                    className="input-field text-xs" placeholder="Descrição" />
+                        <div className="space-y-3 mt-2">
+                          {e.atividades?.map((a: any, ativIndex: number) => {
+                            const isEditA = editingAtividade === a.id
+                            return (
+                              <div key={a.id} className={`rounded-xl border transition-all ${isEditA ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-100 shadow-md' : 'bg-white border-gray-200 shadow-sm hover:shadow-md'}`}>
+                                <div className="p-4">
+                                  {isEditA ? (
+                                    <div className="space-y-2">
+                                      <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
+                                        className="input-field text-xs" placeholder="Nome" />
+                                      <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
+                                        className="input-field text-xs" placeholder="Descrição" />
 
-                                  <div className="flex flex-wrap items-end gap-2">
-                                    {/* Status — destaque visual */}
-                                    <div className="w-[140px]">
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
-                                      <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                                        className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                                          editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                          editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                          editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                          editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                          'border-gray-300 bg-white text-gray-700'
-                                        }`}>
-                                        {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                      </select>
-                                    </div>
+                                      <div className="flex flex-wrap items-end gap-2">
+                                        <div className="w-[140px]">
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
+                                          <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                                            className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                              editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                              editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                              editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                              editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                              'border-gray-300 bg-white text-gray-700'
+                                            }`}>
+                                            {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                          </select>
+                                        </div>
 
-                                    {/* Data — compacta */}
-                                    <div className="w-[140px]">
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
-                                      <input type="date" value={editForm.data_prevista || ''}
-                                        max={editForm.entrega_data_final || undefined}
-                                        onChange={ev => {
-                                          const nd = ev.target.value
-                                          if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
-                                            alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
-                                            return
-                                          }
-                                          setEditForm({ ...editForm, data_prevista: nd })
-                                        }}
-                                        className="w-full input-field text-xs" />
-                                    </div>
+                                        <div className="w-[140px]">
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                          <input type="date" value={editForm.data_prevista || ''}
+                                            max={editForm.entrega_data_final || undefined}
+                                            onChange={ev => {
+                                              const nd = ev.target.value
+                                              if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
+                                                alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+                                                return
+                                              }
+                                              setEditForm({ ...editForm, data_prevista: nd })
+                                            }}
+                                            className="w-full input-field text-xs" />
+                                        </div>
 
-                                    {/* Motivo — flex */}
-                                    <div className="flex-1 min-w-[140px]">
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
-                                      <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                                        placeholder="Opcional" className="input-field text-xs" />
-                                    </div>
-                                  </div>
-
-                                  {(
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-medium text-gray-500">Participantes</span>
-                                      <button type="button" onClick={() => {
-                                        if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
-                                        setEditForm((prev: any) => ({
-                                          ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
-                                        }))
-                                      }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
-                                    </div>
-                                    {editForm.participantes?.map((p: any, i: number) =>
-                                      renderAtividadeParticipanteEditRow(p, i, editForm.participantes, editForm.entrega_participantes || [],
-                                        (idx, f, v) => setEditForm((prev: any) => ({
-                                          ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
-                                        })),
-                                        (idx) => { if (confirm('Remover participante?')) setEditForm((prev: any) => ({
-                                          ...prev, participantes: prev.participantes.filter((_: any, j: number) => j !== idx)
-                                        })) }
-                                      )
-                                    )}
-                                  </div>
-                                  )}
-                                  </>)})()}
-                                  <div className="flex gap-2">
-                                    <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}
-                                      className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
-                                    <button onClick={() => setEditingAtividade(null)}
-                                      className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-start justify-between">
-                                  <div className="flex gap-2">
-                                    <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                                      {ativIndex + 1}
-                                    </span>
-                                    <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-xs font-semibold text-gray-700">{a.nome}</span>
-                                      {(() => {
-                                        const st = STATUS_ENTREGA[a.status] || STATUS_ENTREGA.aberta
-                                        return <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${st.bg} ${st.color}`}>{st.label}</span>
-                                      })()}
-                                      {a.data_prevista && a.status !== 'resolvida' && a.status !== 'cancelada' && new Date(a.data_prevista) < new Date(new Date().toDateString()) && (
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700">Atrasada</span>
-                                      )}
-                                      {hasPendingSolicitacao('atividade', a.id) && (
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando</span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-gray-500">{a.descricao}</p>
-                                    {a.motivo_status && <p className="text-[10px] text-gray-400 italic">Motivo: {a.motivo_status}</p>}
-                                    {a.data_prevista && (
-                                      <p className="text-[10px] text-gray-400 mt-0.5">
-                                        <Clock size={10} className="inline mr-1" />
-                                        {new Date(a.data_prevista + 'T00:00:00').toLocaleDateString('pt-BR')}
-                                      </p>
-                                    )}
-                                    {a.atividade_participantes?.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-1">
-                                        {a.atividade_participantes.map((p: any) => (
-                                          <span key={p.id} className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-gray-200">
-                                            {participanteLabel(p)}: {p.papel}
-                                          </span>
-                                        ))}
+                                        <div className="flex-1 min-w-[140px]">
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
+                                          <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                                            placeholder="Opcional" className="input-field text-xs" />
+                                        </div>
                                       </div>
-                                    )}
-                                  </div>
-                                  </div>
-                                  {canEdit && (
-                                    <div className="flex gap-1.5 shrink-0 ml-2">
-                                      <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500"><Edit3 size={13} /></button>
-                                      <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
+                                      <div className="flex gap-2 mt-4">
+                                        <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}
+                                          className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
+                                        <button onClick={() => setEditingAtividade(null)}
+                                          className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
+                                      </div>
                                     </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-start justify-between gap-3 mb-2">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-5 h-5 rounded flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-bold border border-gray-200 shrink-0 mt-0.5">{ativIndex + 1}</div>
+                                          <h4 className="text-sm font-semibold text-gray-800">{a.nome}</h4>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          {canEdit && <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500 transition-colors p-1"><Edit3 size={14} /></button>}
+                                          {canEdit && <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14} /></button>}
+                                        </div>
+                                      </div>
+                                      <p className="text-xs text-gray-600 mb-3 pl-7">{a.descricao}</p>
+                                      
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pl-7 text-xs border-t border-gray-50 pt-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-gray-500 font-medium">Status:</span>
+                                          <span className={`px-2 py-0.5 rounded-full font-medium ${(STATUS_ENTREGA[a.status] || STATUS_ENTREGA.aberta).bg} ${(STATUS_ENTREGA[a.status] || STATUS_ENTREGA.aberta).color}`}>
+                                            {(STATUS_ENTREGA[a.status] || STATUS_ENTREGA.aberta).label}
+                                          </span>
+                                        </div>
+                                        
+                                        {a.data_prevista && (
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-gray-500 font-medium whitespace-nowrap"><Clock size={12} className="inline mr-0.5 mb-0.5" /> Prazo:</span>
+                                            <span className="text-gray-700">{formatDateBR(a.data_prevista)}</span>
+                                          </div>
+                                        )}
+                                        
+                                        {a.motivo_status && (
+                                          <div className="flex items-center gap-1.5 w-full mt-1">
+                                            <span className="text-gray-500 font-medium">Motivo do status:</span>
+                                            <span className="text-gray-700 italic">{a.motivo_status}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Participantes da Atividade */}
+                                      {a.atividade_participantes?.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-3 pl-7">
+                                          {a.atividade_participantes.map((p: any) => (
+                                            <span key={p.id} className="text-[11px] bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded shadow-sm">
+                                              <span className="font-semibold">{participanteLabel(p)}</span>: {p.papel}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
                                   )}
                                 </div>
-                              )}
                               </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
 
                         {/* Formulário de nova atividade */}
                         {editingAtividade === -e.id && (
                           <div className="mt-3">
-                            <div className="rounded-lg p-3 bg-blue-50 border border-blue-300 ring-1 ring-blue-100">
-                              <div className="space-y-2">
-                                <p className="text-xs font-semibold text-blue-700 mb-1">Nova atividade</p>
+                            <div className="rounded-xl p-4 bg-blue-50 border border-blue-300 ring-2 ring-blue-100 shadow-md">
+                              <div className="space-y-3">
+                                <p className="text-sm font-bold text-blue-800 mb-2">Nova atividade</p>
                                 <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
                                   className="input-field text-xs" placeholder="Nome da atividade" />
                                 <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
@@ -1264,6 +1271,7 @@ export default function ProjetoDetalhePage() {
                           </div>
                         )}
                       </div>
+                    </div>
                     </div>
                   )}
                 </div>

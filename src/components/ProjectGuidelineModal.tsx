@@ -90,7 +90,7 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
                     <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Baixa implementação de projetos de proteção comunitária nos municípios.</li>
                     <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> As COMDECs não possuem modelos técnicos ou metodologias prontas para replicar.</li>
                     <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Criar um "Portfólio de Projetos-Prateleira" com modelos validados pela SEDEC.</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Aumento do número de municípios que implementaram ao menos um projeto do portfólio.</li>
+                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Aumento do número de municípios que implementaram ao menos um projeto do portfólio. (projete também o horizonte temporal para que isso aconteça)</li>
                     <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> DGAC (Líder) e participantes técnicos do ICTDEC/DAEAD.</li>
                   </ul>
                 </div>
@@ -104,7 +104,7 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
                     <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Perda de memória técnica e atraso em processos durante trocas de comando.</li>
                     <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> O conhecimento é personalista e não está institucionalizado em normas ou fluxos.</li>
                     <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Mapear as tarefas críticas do setor e criar Manuais de Procedimentos Padrão (POP).</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Redução do tempo de tramitação de processos após movimentações de pessoal.</li>
+                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Redução do tempo de tramitação de processos após movimentações de pessoal. (projete também o horizonte temporal para que isso aconteça)</li>
                     <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> Chefia do Setor (Líder) e suporte técnico da DDO/ICTDEC.</li>
                   </ul>
                 </div>
@@ -118,7 +118,7 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
                     <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Decisões operacionais pautadas em percepções individuais em vez de doutrina técnica.</li>
                     <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> Falta de uma trilha de formação específica para gestores de Defesa Civil no Estado.</li>
                     <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Implementar o Curso para Formação de Gestores Estaduais com Foco em Gestão Integrada de Riscos e Desastres - GEGIRD-RJ.</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> 70% dos gestores da SUOP certificados e aplicando terminologia padrão em relatórios.</li>
+                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> 70% dos gestores da SUOP certificados e aplicando terminologia padrão em relatórios. (projete também o horizonte temporal para que isso aconteça)</li>
                     <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> DFPC/ICTDEC, CEPEDEC e ESDEC.</li>
                   </ul>
                 </div>
