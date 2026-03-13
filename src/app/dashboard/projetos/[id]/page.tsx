@@ -707,8 +707,8 @@ export default function ProjetoDetalhePage() {
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Indicador(es) de sucesso</label>
                     <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
-                  <input type="text" value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" placeholder="Sugestão de indicador de sucesso (opcional)" />
+                  <textarea value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={3} placeholder="Sugestão de indicador de sucesso (opcional)" />
                 </div>
               </div>
 
@@ -790,7 +790,14 @@ export default function ProjetoDetalhePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
                   <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema que soluciona — Por quê</h3>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.problema_resolve}</p>
+                  <ul className="space-y-1.5 mt-2">
+                    {projeto.problema_resolve?.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-orange-500 font-bold mt-0.5">•</span>
+                        <span className="text-gray-700 leading-relaxed">{line}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
                 
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
@@ -802,7 +809,14 @@ export default function ProjetoDetalhePage() {
               {projeto.indicador_sucesso && (
                 <div className="mb-5 bg-green-50/50 rounded-xl p-4 border border-green-100 text-sm">
                   <h3 className="font-bold text-green-800 flex items-center gap-1.5 mb-1.5">🎯 Indicador(es) de sucesso</h3>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.indicador_sucesso}</p>
+                  <ul className="space-y-1.5 mt-2">
+                    {projeto.indicador_sucesso?.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-green-600 font-bold mt-0.5">•</span>
+                        <span className="text-gray-700 leading-relaxed">{line}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 

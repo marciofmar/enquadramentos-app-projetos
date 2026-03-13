@@ -498,8 +498,8 @@ export default function NovoProjetoPage() {
                     <HelpCircle size={15} />
                   </button>
                 </div>
-                <input type="text" value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} 
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
+                <textarea value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} rows={3}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
                   placeholder="Sugestão de indicador de sucesso (opcional)" />
               </div>
             </div>
