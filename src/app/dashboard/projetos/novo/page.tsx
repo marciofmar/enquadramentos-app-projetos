@@ -89,7 +89,7 @@ export default function NovoProjetoPage() {
 
   const TIPOS_ACAO = [
     'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 
-    'Gestão/Governança', 'Inovação', 'Ação de Integração'
+    'Gestão/Governança', 'Inovação', 'Integração'
   ]
 
   function toggleTipoAcao(tipo: string) {

@@ -42,6 +42,7 @@ export default function ProjetosPage() {
   const [oeFilter, setOeFilter] = useState('')
   const [acaoFilter, setAcaoFilter] = useState('')
   const [setorFilter, setSetorFilter] = useState('')
+  const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
@@ -241,9 +242,12 @@ export default function ProjetosPage() {
         const isParticipante = p.setores_participantes.includes(setorFilter)
         if (!isLider && !isParticipante) return false
       }
+      if (tipoAcaoFilter) {
+        if (!p.tipo_acao.includes(tipoAcaoFilter)) return false
+      }
       return true
     })
-  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter])
+  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter])
 
   // Group by setor lider, sort by proxima entrega
   const grouped = useMemo(() => {
@@ -264,7 +268,7 @@ export default function ProjetosPage() {
 
   const [showPaineis, setShowPaineis] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter)
+  const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter || tipoAcaoFilter)
   const canCreate = profile?.role === 'admin' || profile?.role === 'master' || (profile?.role === 'gestor' && configs['proj_permitir_cadastro'] !== 'false')
 
   function formatQuinzena(dateStr: string | null) {
@@ -348,16 +352,14 @@ export default function ProjetosPage() {
 
           {/* Projetos por tipo de ação */}
           {(() => {
-            const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança']
+            const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração']
             const relevantes = projetos.filter(p => p.status_projeto !== 'abortado')
-            const tiposComProjetos = TIPOS.filter(tipo => relevantes.some(p => p.tipo_acao.includes(tipo)))
-            if (tiposComProjetos.length === 0) return null
             return (
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  {tiposComProjetos.map(tipo => {
-                    const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo))
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                  {TIPOS.map(tipo => {
+                    const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo) || (tipo === 'Integração' && p.tipo_acao.includes('Ação de Integração')))
                     const emAndamento = projetosTipo.filter(p => p.status_projeto === 'em_andamento').length
                     const finalizados = projetosTipo.filter(p => p.status_projeto === 'finalizado').length
                     return (
@@ -389,13 +391,13 @@ export default function ProjetosPage() {
           <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
             <Filter size={16} /> Filtros
             {hasFilters && (
-              <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter('') }}
+              <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setTipoAcaoFilter('') }}
                 className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
                 <X size={14} /> Limpar
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" placeholder="Buscar projeto..." value={searchText}
@@ -412,6 +414,10 @@ export default function ProjetosPage() {
             <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
               <option value="">Todos os setores</option>
               {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
+            </select>
+            <select value={tipoAcaoFilter} onChange={e => setTipoAcaoFilter(e.target.value)} className="input-field">
+              <option value="">Todos os tipos de ação</option>
+              {['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração'].map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
         </div>

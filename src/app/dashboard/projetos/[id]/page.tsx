@@ -204,7 +204,7 @@ export default function ProjetoDetalhePage() {
   // Project edit
   const TIPOS_ACAO = [
     'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 
-    'Gestão/Governança', 'Inovação', 'Ação de Integração'
+    'Gestão/Governança', 'Inovação', 'Integração'
   ]
 
   function startEditProjeto() {
