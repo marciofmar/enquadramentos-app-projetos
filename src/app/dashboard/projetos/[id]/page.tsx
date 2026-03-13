@@ -5,8 +5,9 @@ import { createClient } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Edit3, Trash2, Save, X, Plus, PackagePlus, ListPlus,
-  CheckCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp
+  CheckCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react'
+import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import type { Profile } from '@/lib/types'
 
 const QUINZENAS = (() => {
@@ -59,6 +60,22 @@ export default function ProjetoDetalhePage() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
+
+  useEffect(() => {
+    const hideGuideline = localStorage.getItem('hideProjectGuideline')
+    if (hideGuideline !== 'true') {
+      setModalOpen(true)
+      setModalShowCheckbox(true)
+    }
+  }, [])
+
+  const openHelpModal = () => {
+    setModalShowCheckbox(false)
+    setModalOpen(true)
+  }
 
   useEffect(() => { loadAll() }, [id])
 
@@ -179,7 +196,8 @@ export default function ProjetoDetalhePage() {
 
   // Project edit
   const TIPOS_ACAO = [
-    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança'
+    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 
+    'Gestão/Governança', 'Inovação', 'Ação de Integração'
   ]
 
   function startEditProjeto() {
@@ -626,6 +644,7 @@ export default function ProjetoDetalhePage() {
 
   return (
     <div>
+      <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
       <button onClick={() => router.push('/dashboard/projetos')}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar aos projetos
@@ -634,66 +653,117 @@ export default function ProjetoDetalhePage() {
       {/* Header do projeto */}
       <div className={`bg-white rounded-xl border overflow-hidden mb-6 ${editingProjeto ? 'border-blue-400 ring-2 ring-blue-100 shadow-md' : 'border-gray-200'}`}>
         <div className={`h-1 ${pont.bg === 'bg-green-50' ? 'bg-green-400' : pont.bg === 'bg-yellow-50' ? 'bg-yellow-400' : 'bg-red-400'}`} />
-        <div className={`p-6 ${editingProjeto ? 'bg-blue-50/30' : ''}`}>
+        <div className={`p-6 ${editingProjeto ? 'bg-blue-50/20' : ''}`}>
           {editingProjeto ? (
-            <div className="space-y-3">
-              <input type="text" value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })}
-                className="input-field text-lg font-bold" />
-              {isAdminOrMaster && (
-                <select value={editForm.setor_lider_id} onChange={e => setEditForm({ ...editForm, setor_lider_id: parseInt(e.target.value) })} className="input-field text-sm">
-                  {setores.map((s: any) => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
-                </select>
-              )}
-              <input type="text" value={editForm.responsavel || ''} onChange={e => setEditForm({ ...editForm, responsavel: e.target.value })}
-                className="input-field text-sm" placeholder="Responsável pelo projeto (opcional)" />
-              <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
-                className="input-field text-sm resize-none" rows={3} placeholder="Descrição (O quê)" />
-              <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
-                className="input-field text-sm resize-none" rows={3} placeholder="Problema que soluciona (Por quê)" />
-              <textarea value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
-                className="input-field text-sm resize-none" rows={2} placeholder="Indicador de sucesso (opcional)" />
-              <div className="max-h-40 overflow-y-auto border rounded-lg p-2">
-                {acoes.map((a: any) => (
-                  <label key={a.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
-                    <input type="checkbox" checked={editForm.acoes?.includes(a.id)}
-                      onChange={() => setEditForm((prev: any) => ({
-                        ...prev, acoes: prev.acoes.includes(a.id) ? prev.acoes.filter((x: number) => x !== a.id) : [...prev.acoes, a.id]
-                      }))} className="rounded border-gray-300 text-orange-500" />
-                    <span className="font-medium text-sedec-600">AE {a.numero}</span> {a.nome}
-                  </label>
-                ))}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Tipo de ação</label>
-                <div className="flex flex-wrap gap-2 border rounded-lg p-2">
-                  {TIPOS_ACAO.map(tipo => (
-                    <label key={tipo} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input type="checkbox" checked={editForm.tipo_acao?.includes(tipo) || false}
-                        onChange={() => setEditForm((prev: any) => ({
-                          ...prev, tipo_acao: prev.tipo_acao?.includes(tipo) ? prev.tipo_acao.filter((t: string) => t !== tipo) : [...(prev.tipo_acao || []), tipo]
-                        }))} className="rounded border-gray-300 text-orange-500" />
-                      <span className="text-gray-600">{tipo}</span>
-                    </label>
-                  ))}
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome do projeto</label>
+                  <input type="text" value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-bold text-gray-800" />
+                </div>
+                
+                {isAdminOrMaster && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Setor líder</label>
+                    <select value={editForm.setor_lider_id} onChange={e => setEditForm({ ...editForm, setor_lider_id: parseInt(e.target.value) })} 
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm">
+                      {setores.map((s: any) => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+                    </select>
+                  </div>
+                )}
+                
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Responsável pelo projeto</label>
+                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <input type="text" value={editForm.responsavel || ''} onChange={e => setEditForm({ ...editForm, responsavel: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" placeholder="Ex: Chefe da Seção X - Maj BM Fulano" />
                 </div>
               </div>
-              <div className="flex gap-2">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-blue-100/50">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Problema que soluciona — Por quê</label>
+                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={4} placeholder="Qual problema concreto este projeto resolve?" />
+                </div>
+                
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição da solução proposta — O quê</label>
+                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={4} placeholder="Descreva o que este projeto entregará" />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Indicador(es) de sucesso</label>
+                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <input type="text" value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" placeholder="Sugestão de indicador de sucesso (opcional)" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-blue-100/50">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Ações estratégicas vinculadas</label>
+                  <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-white">
+                    {acoes.map((a: any) => (
+                      <label key={a.id} className="flex items-start gap-3 text-sm p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                        <input type="checkbox" checked={editForm.acoes?.includes(a.id)}
+                          onChange={() => setEditForm((prev: any) => ({
+                            ...prev, acoes: prev.acoes.includes(a.id) ? prev.acoes.filter((x: number) => x !== a.id) : [...prev.acoes, a.id]
+                          }))} className="mt-0.5 rounded border-gray-300 text-orange-500 focus:ring-orange-500" />
+                        <div>
+                          <span className="font-bold text-sedec-600 block">AE {a.numero}</span>
+                          <span className="text-gray-600 leading-snug">{a.nome}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Tipo de ação</label>
+                  <div className="flex flex-wrap gap-2 border border-gray-200 rounded-xl p-4 bg-white">
+                    {TIPOS_ACAO.map(tipo => (
+                      <label key={tipo} className="flex items-center gap-2 text-sm bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
+                        <input type="checkbox" checked={editForm.tipo_acao?.includes(tipo) || false}
+                          onChange={() => setEditForm((prev: any) => ({
+                            ...prev, tipo_acao: prev.tipo_acao?.includes(tipo) ? prev.tipo_acao.filter((t: string) => t !== tipo) : [...(prev.tipo_acao || []), tipo]
+                          }))} className="rounded border-gray-300 text-orange-500 focus:ring-orange-500" />
+                        <span className="text-gray-700 font-medium">{tipo}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-blue-100/50">
                 <button onClick={saveEditProjeto} disabled={saving}
-                  className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
+                  className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"><Save size={16} /> Salvar alterações</button>
                 <button onClick={() => setEditingProjeto(false)}
-                  className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
+                  className="flex items-center gap-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-5 py-2.5 rounded-lg font-medium transition-colors"><X size={16} /> Cancelar</button>
               </div>
             </div>
           ) : (
             <>
               <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
+                <div className="flex-1">
                   <h1 className="text-xl font-bold text-gray-800 mb-1">{projeto.nome}</h1>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium">
+                    <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded font-medium border border-gray-200">
                       {projeto.setor_lider?.codigo} — {projeto.setor_lider?.nome_completo}
                     </span>
-                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${pont.bg} ${pont.color}`}>
+                    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium ${pont.bg} ${pont.color}`}>
                       <PontIcon size={12} /> {pont.label}
                     </span>
                   </div>
@@ -703,46 +773,70 @@ export default function ProjetoDetalhePage() {
                 )}
                 {canEdit && (
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={startEditProjeto} className="text-gray-400 hover:text-orange-500" title="Editar"><Edit3 size={18} /></button>
-                    <button onClick={deleteProject} className="text-gray-400 hover:text-red-500" title="Excluir"><Trash2 size={18} /></button>
+                    <button onClick={startEditProjeto} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors font-medium" title="Editar"><Edit3 size={15} /> Editar</button>
+                    {(profile?.role === 'master' || profile?.setor_id === projeto.setor_lider_id) && (
+                      <button onClick={deleteProject} className="flex items-center gap-1 text-sm bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium" title="Excluir"><Trash2 size={15} /> Excluir</button>
+                    )}
                   </div>
                 )}
               </div>
 
               {projeto.responsavel && (
-                <p className="text-sm text-gray-600 mb-2"><span className="font-medium text-gray-500">Responsável:</span> {projeto.responsavel}</p>
+                <div className="mb-5">
+                  <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Responsável:</span> {projeto.responsavel}</p>
+                </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <span className="text-xs font-medium text-blue-500 block mb-1">O quê</span>
-                  <span className="text-gray-700">{projeto.descricao}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema que soluciona — Por quê</h3>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.problema_resolve}</p>
                 </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <span className="text-xs font-medium text-green-500 block mb-1">Por quê</span>
-                  <span className="text-gray-700">{projeto.problema_resolve}</span>
+                
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-blue-500" /> Descrição da solução proposta — O quê</h3>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.descricao}</p>
                 </div>
               </div>
 
               {projeto.indicador_sucesso && (
-                <p className="text-sm text-gray-600 mb-3"><span className="font-medium text-gray-500">Indicador de sucesso:</span> {projeto.indicador_sucesso}</p>
-              )}
-
-              <div className="flex flex-wrap gap-1 mb-2">
-                {projeto.projeto_acoes?.map((pa: any) => (
-                  <span key={pa.acao_estrategica?.id} className="bg-sedec-50 text-sedec-600 px-2 py-0.5 rounded text-xs font-medium">
-                    AE {pa.acao_estrategica?.numero}
-                  </span>
-                ))}
-              </div>
-
-              {projeto.tipo_acao?.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {projeto.tipo_acao.map((tipo: string) => (
-                    <span key={tipo} className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded text-xs font-medium">{tipo}</span>
-                  ))}
+                <div className="mb-5 bg-green-50/50 rounded-xl p-4 border border-green-100 text-sm">
+                  <h3 className="font-bold text-green-800 flex items-center gap-1.5 mb-1.5">🎯 Indicador(es) de sucesso</h3>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.indicador_sucesso}</p>
                 </div>
               )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 pt-5 border-t border-gray-100">
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><ListPlus size={14} /> Ações estratégicas vinculadas</h3>
+                  <div className="flex flex-col gap-2">
+                    {projeto.projeto_acoes?.map((pa: any) => (
+                      <div key={pa.acao_estrategica?.id} className="bg-white border border-gray-200 text-gray-700 px-3 py-2.5 rounded-lg text-sm flex items-start gap-3 shadow-sm transition-all hover:bg-gray-50">
+                        <span className="font-bold text-sedec-600 shrink-0 bg-sedec-50 px-2 py-0.5 rounded text-xs border border-sedec-100 mt-0.5">AE {pa.acao_estrategica?.numero}</span>
+                        <span className="leading-snug">{pa.acao_estrategica?.nome}</span>
+                      </div>
+                    ))}
+                    {(!projeto.projeto_acoes || projeto.projeto_acoes.length === 0) && (
+                      <span className="text-sm text-gray-400 italic">Nenhuma ação vinculada.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><PackagePlus size={14} /> Tipo de Ação</h3>
+                  {projeto.tipo_acao && projeto.tipo_acao.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {projeto.tipo_acao.map((tipo: string) => (
+                        <span key={tipo} className="bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-1.5 rounded-md text-xs font-semibold shadow-sm">
+                          {tipo}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400 italic">Nenhum tipo definido.</span>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </div>

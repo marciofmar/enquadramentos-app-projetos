@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle } from 'lucide-react'
+import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
@@ -42,12 +43,28 @@ export default function NovoProjetoPage() {
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavel, setResponsavel] = useState('')
   const [indicadorSucesso, setIndicadorSucesso] = useState('')
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
   const [tipoAcao, setTipoAcao] = useState<string[]>([])
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
 
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    const hideGuideline = localStorage.getItem('hideProjectGuideline')
+    if (hideGuideline !== 'true') {
+      setModalOpen(true)
+      setModalShowCheckbox(true)
+    }
+  }, [])
+
+  const openHelpModal = () => {
+    setModalShowCheckbox(false)
+    setModalOpen(true)
+  }
 
   useEffect(() => {
     async function load() {
@@ -71,7 +88,8 @@ export default function NovoProjetoPage() {
   }, [])
 
   const TIPOS_ACAO = [
-    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança'
+    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 
+    'Gestão/Governança', 'Inovação', 'Ação de Integração'
   ]
 
   function toggleTipoAcao(tipo: string) {
@@ -393,6 +411,7 @@ export default function NovoProjetoPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
       <button onClick={() => router.push('/dashboard/projetos')}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar aos projetos
@@ -402,75 +421,120 @@ export default function NovoProjetoPage() {
 
       <div className="space-y-6">
         {/* Dados do projeto */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <h2 className="text-base font-semibold text-gray-700">Dados do Projeto</h2>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome do projeto <span className="text-red-500">*</span></label>
-            <input type="text" value={nome} onChange={e => setNome(e.target.value)} className="input-field" placeholder="Nome claro e objetivo" />
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-bold text-gray-800">Dados do Projeto</h2>
+            <p className="text-xs text-gray-500 mt-1">Preencha as informações básicas para iniciar o escopo do projeto.</p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Setor líder <span className="text-red-500">*</span></label>
-            {profile?.role === 'gestor' ? (
-              <div className="input-field bg-gray-50 text-gray-600">
-                {setores.find(s => s.id === profile.setor_id)?.codigo || ''} — {setores.find(s => s.id === profile.setor_id)?.nome_completo || ''}
+          
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nome do projeto <span className="text-red-500">*</span></label>
+                <input type="text" value={nome} onChange={e => setNome(e.target.value)} 
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
+                  placeholder="Nome claro e objetivo" />
               </div>
-            ) : (
-              <select value={setorLiderId} onChange={e => setSetorLiderId(parseInt(e.target.value) || '')} className="input-field">
-                <option value="">Selecione o setor líder...</option>
-                {setores.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
-              </select>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Responsável pelo projeto</label>
-            <input type="text" value={responsavel} onChange={e => setResponsavel(e.target.value)} className="input-field" placeholder="Nome do responsável (opcional)" />
-          </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Setor líder <span className="text-red-500">*</span></label>
+                {profile?.role === 'gestor' ? (
+                  <div className="w-full px-4 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 font-medium">
+                    {setores.find(s => s.id === profile.setor_id)?.codigo || ''} — {setores.find(s => s.id === profile.setor_id)?.nome_completo || ''}
+                  </div>
+                ) : (
+                  <select value={setorLiderId} onChange={e => setSetorLiderId(parseInt(e.target.value) || '')} 
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 bg-white">
+                    <option value="">Selecione o setor líder...</option>
+                    {setores.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+                  </select>
+                )}
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição — O quê <span className="text-red-500">*</span></label>
-            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={3}
-              className="input-field resize-none" placeholder="Descreva o que este projeto entregará" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Problema que soluciona — Por quê <span className="text-red-500">*</span></label>
-            <textarea value={problemaResolve} onChange={e => setProblemaResolve(e.target.value)} rows={3}
-              className="input-field resize-none" placeholder="Qual problema concreto este projeto resolve?" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Indicador de sucesso</label>
-            <textarea value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} rows={2}
-              className="input-field resize-none" placeholder="Sugestão de indicador de sucesso (opcional)" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ações estratégicas vinculadas <span className="text-red-500">*</span></label>
-            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-              {acoes.map(a => (
-                <label key={a.id} className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" checked={acoesSelecionadas.includes(a.id)}
-                    onChange={() => toggleAcao(a.id)} className="rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
-                  <span className="font-medium text-sedec-600">AE {a.numero}</span>
-                  <span className="text-gray-600 line-clamp-1">{a.nome}</span>
-                </label>
-              ))}
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Responsável pelo projeto</label>
+                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <input type="text" value={responsavel} onChange={e => setResponsavel(e.target.value)} 
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
+                  placeholder="Ex: Chefe da Seção X - Maj BM Fulano" />
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de ação</label>
-            <div className="flex flex-wrap gap-2 border border-gray-200 rounded-lg p-3">
-              {TIPOS_ACAO.map(tipo => (
-                <label key={tipo} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input type="checkbox" checked={tipoAcao.includes(tipo)} onChange={() => toggleTipoAcao(tipo)}
-                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
-                  <span className="text-gray-600">{tipo}</span>
-                </label>
-              ))}
+            <hr className="border-gray-100" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Problema que soluciona — Por quê <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <textarea value={problemaResolve} onChange={e => setProblemaResolve(e.target.value)} rows={4}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
+                  placeholder="Qual problema concreto este projeto resolve?" />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Descrição da solução proposta — O quê <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={4}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
+                  placeholder="Descreva o que este projeto entregará" />
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso</label>
+                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <input type="text" value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} 
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
+                  placeholder="Sugestão de indicador de sucesso (opcional)" />
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Ações estratégicas vinculadas <span className="text-red-500">*</span></label>
+                <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1 bg-gray-50/50">
+                  {acoes.map(a => (
+                    <label key={a.id} className="flex items-start gap-3 text-sm p-2 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm cursor-pointer transition-all">
+                      <input type="checkbox" checked={acoesSelecionadas.includes(a.id)}
+                        onChange={() => toggleAcao(a.id)} className="mt-0.5 rounded border-gray-300 text-orange-500 focus:ring-orange-500" />
+                      <div>
+                        <span className="font-bold text-sedec-600 block">AE {a.numero}</span>
+                        <span className="text-gray-600 leading-snug">{a.nome}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Tipo de ação</label>
+                <div className="flex flex-wrap gap-2 border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+                  {TIPOS_ACAO.map(tipo => (
+                    <label key={tipo} className="flex items-center gap-2 text-sm bg-white border border-gray-200 px-3 py-1.5 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
+                      <input type="checkbox" checked={tipoAcao.includes(tipo)} onChange={() => toggleTipoAcao(tipo)}
+                        className="rounded border-gray-300 text-orange-500 focus:ring-orange-500" />
+                      <span className="text-gray-700 font-medium">{tipo}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
