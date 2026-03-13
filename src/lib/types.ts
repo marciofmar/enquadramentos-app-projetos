@@ -5,6 +5,7 @@ export interface Profile {
   setor_id: number | null
   role: 'admin' | 'master' | 'gestor' | 'usuario'
   ativo: boolean
+  senha_zerada?: boolean
 }
 
 export interface AcaoEstrategica {

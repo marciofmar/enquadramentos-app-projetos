@@ -27,6 +27,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       if (data) {
         setProfile(data as any)
+        // Guarda: se senha foi zerada, forçar troca de senha
+        if (data.senha_zerada && !window.location.pathname.includes('/dashboard/perfil')) {
+          router.push('/dashboard/perfil?forcarSenha=true')
+        }
       }
       setLoading(false)
     }
@@ -117,7 +121,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-sm">
+              <button onClick={() => router.push('/dashboard/perfil')}
+                className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity" title="Meu Perfil">
                 <User size={16} className="text-gray-400" />
                 <div className="hidden sm:flex flex-col items-end leading-tight">
                   <span className="text-gray-300 text-xs">{profile?.nome}</span>
@@ -126,7 +131,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   )}
                 </div>
                 <span className="text-xs bg-orange-600 px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
-              </div>
+              </button>
 
               <button onClick={handleLogout} className="text-gray-400 hover:text-white transition-colors" title="Sair">
                 <LogOut size={18} />

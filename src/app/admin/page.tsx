@@ -954,6 +954,12 @@ function UsuariosAdmin() {
   const [users, setUsers] = useState<any[]>([])
   const [setores, setSetores] = useState<any[]>([])
   const [setoresCadastro, setSetoresCadastro] = useState<any[]>([])
+  const [editingNome, setEditingNome] = useState<string | null>(null)
+  const [editingEmail, setEditingEmail] = useState<string | null>(null)
+  const [editNomeValue, setEditNomeValue] = useState('')
+  const [editEmailValue, setEditEmailValue] = useState('')
+  const [savingUser, setSavingUser] = useState<string | null>(null)
+  const [resetConfirm, setResetConfirm] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -981,47 +987,162 @@ function UsuariosAdmin() {
     if (data) setUsers(data)
   }
 
+  async function saveNome(userId: string) {
+    if (!editNomeValue.trim()) return
+    setSavingUser(userId)
+    const res = await fetch('/api/admin/update-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, nome: editNomeValue.trim() }),
+    })
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, nome: editNomeValue.trim() } : u))
+      setEditingNome(null)
+    } else {
+      const data = await res.json()
+      alert(`Erro: ${data.error}`)
+    }
+    setSavingUser(null)
+  }
+
+  async function saveEmail(userId: string) {
+    if (!editEmailValue.trim()) return
+    setSavingUser(userId)
+    const res = await fetch('/api/admin/update-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email: editEmailValue.trim() }),
+    })
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, email: editEmailValue.trim() } : u))
+      setEditingEmail(null)
+    } else {
+      const data = await res.json()
+      alert(`Erro: ${data.error}`)
+    }
+    setSavingUser(null)
+  }
+
+  async function handleResetPassword(userId: string) {
+    setSavingUser(userId)
+    const res = await fetch('/api/admin/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, senha_zerada: true } : u))
+      setResetConfirm(null)
+    } else {
+      const data = await res.json()
+      alert(`Erro: ${data.error}`)
+    }
+    setSavingUser(null)
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Nome</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Setor</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Perfil</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {users.map(u => (
-            <tr key={u.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 font-medium text-gray-800">{u.nome}</td>
-              <td className="px-4 py-3 text-gray-500">{u.email}</td>
-              <td className="px-4 py-3">
-                <select value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
-                  className="text-xs border border-gray-200 rounded px-2 py-1">
-                  <option value="">Sem setor</option>
-                  {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
-                </select>
-              </td>
-              <td className="px-4 py-3">
-                <select value={u.role} onChange={e => updateRole(u.id, e.target.value)}
-                  className={`text-xs font-medium rounded px-2 py-1 border ${
-                    u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
-                    u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-                    u.role === 'gestor' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                    'bg-gray-50 border-gray-200 text-gray-600'
-                  }`}>
-                  <option value="usuario">Usuário</option>
-                  <option value="gestor">Gestor</option>
-                  <option value="master">Master</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Nome</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Setor</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Perfil</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Ações</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {users.map(u => (
+              <tr key={u.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  {editingNome === u.id ? (
+                    <div className="flex items-center gap-1">
+                      <input type="text" value={editNomeValue} onChange={e => setEditNomeValue(e.target.value)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 w-36"
+                        onKeyDown={e => { if (e.key === 'Enter') saveNome(u.id); if (e.key === 'Escape') setEditingNome(null) }}
+                        autoFocus />
+                      <button onClick={() => saveNome(u.id)} disabled={savingUser === u.id}
+                        className="text-xs text-green-600 hover:text-green-800 font-medium">OK</button>
+                      <button onClick={() => setEditingNome(null)}
+                        className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setEditingNome(u.id); setEditNomeValue(u.nome) }}
+                      className="font-medium text-gray-800 hover:text-sedec-500 text-left" title="Clique para editar">
+                      {u.nome}
+                    </button>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {editingEmail === u.id ? (
+                    <div className="flex items-center gap-1">
+                      <input type="email" value={editEmailValue} onChange={e => setEditEmailValue(e.target.value)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 w-48"
+                        onKeyDown={e => { if (e.key === 'Enter') saveEmail(u.id); if (e.key === 'Escape') setEditingEmail(null) }}
+                        autoFocus />
+                      <button onClick={() => saveEmail(u.id)} disabled={savingUser === u.id}
+                        className="text-xs text-green-600 hover:text-green-800 font-medium">OK</button>
+                      <button onClick={() => setEditingEmail(null)}
+                        className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setEditingEmail(u.id); setEditEmailValue(u.email) }}
+                      className="text-gray-500 hover:text-sedec-500 text-left" title="Clique para editar">
+                      {u.email}
+                    </button>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <select value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
+                    className="text-xs border border-gray-200 rounded px-2 py-1">
+                    <option value="">Sem setor</option>
+                    {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <select value={u.role} onChange={e => updateRole(u.id, e.target.value)}
+                    className={`text-xs font-medium rounded px-2 py-1 border ${
+                      u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                      u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                      u.role === 'gestor' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                      'bg-gray-50 border-gray-200 text-gray-600'
+                    }`}>
+                    <option value="usuario">Usuário</option>
+                    <option value="gestor">Gestor</option>
+                    <option value="master">Master</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {u.senha_zerada && (
+                      <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Senha zerada</span>
+                    )}
+                    {resetConfirm === u.id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-gray-500">Confirmar?</span>
+                        <button onClick={() => handleResetPassword(u.id)} disabled={savingUser === u.id}
+                          className="text-[10px] text-red-600 hover:text-red-800 font-medium">
+                          {savingUser === u.id ? '...' : 'Sim'}
+                        </button>
+                        <button onClick={() => setResetConfirm(null)}
+                          className="text-[10px] text-gray-400 hover:text-gray-600">Não</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setResetConfirm(u.id)}
+                        className="text-[10px] text-red-500 hover:text-red-700 font-medium whitespace-nowrap">
+                        Zerar Senha
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -1081,6 +1202,19 @@ function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
   }
 
   const items = [
+    {
+      grupo: 'Sistema',
+      adminOnly: true,
+      toggles: [
+        {
+          chave: 'email_funcoes_ativas',
+          titulo: 'Ativar funções de email',
+          descricao: 'Quando ligado, o cadastro exige confirmação por email e a recuperação de senha é feita pelo próprio usuário via email. Quando desligado, a recuperação de senha é feita pelo administrador (botão "Zerar Senha" na aba Usuários).',
+          ligado: 'Email de confirmação e recuperação ativos',
+          desligado: 'Sem email — recuperação via admin',
+        },
+      ],
+    },
     {
       grupo: 'Observações',
       toggles: [
@@ -1166,8 +1300,10 @@ function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
     },
   ]
 
-  // Master só vê configurações do módulo de projetos
-  const visibleItems = isMaster ? items.filter(g => g.grupo.startsWith('Módulo de Projetos')) : items
+  // Master só vê configurações do módulo de projetos; itens adminOnly ficam ocultos para master
+  const visibleItems = isMaster
+    ? items.filter(g => g.grupo.startsWith('Módulo de Projetos'))
+    : items.filter(g => !(g as any).adminOnly || !isMaster)
 
   return (
     <div className="max-w-2xl">
