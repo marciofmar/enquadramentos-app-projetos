@@ -3,14 +3,18 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink } from 'lucide-react'
 
 interface CalendarItem {
   id: number
   tipo: 'entrega' | 'atividade'
   nome: string
+  entrega_nome: string | null // only for atividade
   data: string // YYYY-MM-DD
   status: string
+  motivo_status: string | null
+  criterios_aceite: string | null // only for entrega
+  dependencias_criticas: string | null // only for entrega
   projeto_id: number
   projeto_nome: string
   setores: string[]
@@ -98,7 +102,7 @@ export default function CalendarioPage() {
   const [oeFilter, setOeFilter] = useState('')
   const [acaoFilter, setAcaoFilter] = useState('')
   const [setorFilter, setSetorFilter] = useState('')
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [selectedItem, setSelectedItem] = useState<CalendarItem | null>(null)
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
@@ -122,9 +126,9 @@ export default function CalendarioPage() {
       supabase.from('projetos')
         .select(`id, nome,
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-          entregas(id, nome, data_final_prevista, status,
+          entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas,
             entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
-            atividades(id, nome, data_prevista, status,
+            atividades(id, nome, data_prevista, status, motivo_status,
               atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
           )`)
         .order('nome'),
@@ -159,8 +163,12 @@ export default function CalendarioPage() {
               id: e.id,
               tipo: 'entrega',
               nome: e.nome,
+              entrega_nome: null,
               data: e.data_final_prevista,
               status: e.status || 'aberta',
+              motivo_status: e.motivo_status || null,
+              criterios_aceite: e.criterios_aceite || null,
+              dependencias_criticas: e.dependencias_criticas || null,
               projeto_id: p.id,
               projeto_nome: p.nome,
               setores: Array.from(setorSet),
@@ -181,8 +189,12 @@ export default function CalendarioPage() {
                 id: a.id,
                 tipo: 'atividade',
                 nome: a.nome,
+                entrega_nome: e.nome,
                 data: a.data_prevista,
                 status: a.status || 'aberta',
+                motivo_status: a.motivo_status || null,
+                criterios_aceite: null,
+                dependencias_criticas: null,
                 projeto_id: p.id,
                 projeto_nome: p.nome,
                 setores: Array.from(aSetorSet),
@@ -283,10 +295,9 @@ export default function CalendarioPage() {
     }
   }
 
-  function handleDayClick(dateKey: string, dayItems: CalendarItem[]) {
-    if (dayItems.length > 0) {
-      setSelectedDay(dateKey)
-    }
+  function handleItemClick(item: CalendarItem, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedItem(item)
   }
 
   function switchToWeekOf(date: Date) {
@@ -404,8 +415,7 @@ export default function CalendarioPage() {
 
               return (
                 <div key={i}
-                  onClick={() => handleDayClick(key, dayItems)}
-                  className={`min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 p-1 cursor-pointer hover:bg-gray-50 transition-colors
+                  className={`min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 p-1 transition-colors
                     ${!day.isCurrentMonth ? 'bg-gray-50' : ''}
                     ${isToday ? 'ring-2 ring-inset ring-orange-400' : ''}`}>
                   <div className={`text-xs font-medium mb-1 ${!day.isCurrentMonth ? 'text-gray-300' : isToday ? 'text-orange-600 font-bold' : 'text-gray-600'}`}>
@@ -414,7 +424,7 @@ export default function CalendarioPage() {
                   <div className="space-y-0.5">
                     {dayItems.slice(0, maxPills).map(item => (
                       <div key={`${item.tipo}-${item.id}`}
-                        onClick={e => { e.stopPropagation(); router.push(`/dashboard/projetos/${item.projeto_id}`) }}
+                        onClick={(e) => handleItemClick(item, e)}
                         title={`${item.nome} — ${item.projeto_nome}`}
                         className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80
                           border-l-2 ${item.tipo === 'entrega' ? 'border-orange-400 font-semibold' : 'border-blue-300 font-normal'}
@@ -459,7 +469,7 @@ export default function CalendarioPage() {
                   <div className="overflow-y-auto max-h-[280px] space-y-1">
                     {dayItems.map(item => (
                       <div key={`${item.tipo}-${item.id}`}
-                        onClick={() => router.push(`/dashboard/projetos/${item.projeto_id}`)}
+                        onClick={(e) => handleItemClick(item, e)}
                         title={`${item.nome} — ${item.projeto_nome}`}
                         className={`text-[10px] px-1.5 py-1 rounded cursor-pointer hover:opacity-80
                           border-l-2 ${item.tipo === 'entrega' ? 'border-orange-400 font-semibold' : 'border-blue-300 font-normal'}
@@ -479,43 +489,118 @@ export default function CalendarioPage() {
         </div>
       )}
 
-      {/* Day detail modal */}
-      {selectedDay && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedDay(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-800">
-                {(() => {
-                  const [y, m, d] = selectedDay.split('-').map(Number)
-                  const date = new Date(y, m - 1, d)
-                  return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-                })()}
-              </h3>
-              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              {(itemsByDate[selectedDay] || []).map(item => (
-                <button key={`${item.tipo}-${item.id}`}
-                  onClick={() => { setSelectedDay(null); router.push(`/dashboard/projetos/${item.projeto_id}`) }}
-                  className={`w-full text-left p-3 rounded-lg border hover:border-orange-300 transition-colors
-                    border-l-4 ${item.tipo === 'entrega' ? 'border-l-orange-400' : 'border-l-blue-300'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.tipo === 'entrega' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {item.tipo === 'entrega' ? 'Entrega' : 'Atividade'}
+      {/* Item detail popup */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedItem(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className={`p-5 rounded-t-xl border-b ${
+              selectedItem.tipo === 'entrega' ? 'bg-orange-50 border-orange-100' : 'bg-blue-50 border-blue-100'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wide ${
+                      selectedItem.tipo === 'entrega' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {selectedItem.tipo === 'entrega' ? 'Entrega' : 'Atividade'}
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_COLORS[item.status] || 'bg-gray-100 text-gray-700'}`}>
-                      {item.status.replace('_', ' ')}
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[selectedItem.status] || 'bg-gray-100 text-gray-700'}`}>
+                      {selectedItem.status.replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <div className="text-sm font-medium text-gray-800">{item.nome}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{item.projeto_nome}</div>
-                </button>
-              ))}
-              {(!itemsByDate[selectedDay] || itemsByDate[selectedDay].length === 0) && (
-                <div className="text-center text-gray-400 py-4">Nenhum item neste dia.</div>
+                  <h3 className="text-base font-bold text-gray-800 leading-snug">{selectedItem.nome}</h3>
+                  {selectedItem.entrega_nome && (
+                    <p className="text-xs text-gray-500 mt-1">Entrega: <span className="font-medium">{selectedItem.entrega_nome}</span></p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-0.5">{selectedItem.projeto_nome}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => { setSelectedItem(null); router.push(`/dashboard/projetos/${selectedItem.projeto_id}`) }}
+                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg transition-colors ${
+                      selectedItem.tipo === 'entrega'
+                        ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                    }`}
+                    title="Ver projeto"
+                  >
+                    <ExternalLink size={13} /> Ver projeto
+                  </button>
+                  <button onClick={() => setSelectedItem(null)} className="text-gray-400 hover:text-gray-600 transition-colors p-1">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+
+              {/* Prazo */}
+              <div className="flex items-center gap-2 text-sm">
+                <CalendarDays size={14} className="text-gray-400 shrink-0" />
+                <span className="text-gray-500 font-medium">Prazo:</span>
+                <span className="text-gray-700">
+                  {(() => {
+                    const [y, m, d] = selectedItem.data.split('-').map(Number)
+                    return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+                  })()}
+                </span>
+              </div>
+
+              {/* Motivo do status */}
+              {selectedItem.motivo_status && (
+                <div className="text-sm bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  <span className="font-bold text-amber-700">Motivo do status:</span>
+                  <span className="text-gray-700 ml-1 italic">{selectedItem.motivo_status}</span>
+                </div>
               )}
+
+              {/* Setores participantes */}
+              {selectedItem.setores.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Participantes</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedItem.setores.map(s => (
+                      <span key={s} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-medium border border-gray-200">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Critérios de aceite (entrega only) */}
+              {selectedItem.criterios_aceite && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Critérios de aceite</p>
+                  <ul className="space-y-1">
+                    {selectedItem.criterios_aceite.split('\n').filter(l => l.trim()).map((line, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-sm text-gray-700">
+                        <span className="text-gray-400 font-bold mt-0.5 shrink-0">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Dependências críticas (entrega only) */}
+              {selectedItem.dependencias_criticas && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Dependências críticas</p>
+                  <ul className="space-y-1">
+                    {selectedItem.dependencias_criticas.split('\n').filter(l => l.trim()).map((line, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-sm text-gray-700">
+                        <span className="text-amber-500 font-bold mt-0.5 shrink-0">⚠</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+
             </div>
           </div>
         </div>

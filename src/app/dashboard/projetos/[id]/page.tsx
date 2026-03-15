@@ -1059,7 +1059,7 @@ export default function ProjetoDetalhePage() {
                         </div>
                       )}
                       {e.motivo_status && (
-                        <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Motivo do status:</span> {e.motivo_status}</p>
+                        <p className="text-xs text-gray-600 mb-2"><span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Motivo do status:</span> {e.motivo_status}</p>
                       )}
 
                       {/* Participantes */}
@@ -1187,7 +1187,7 @@ export default function ProjetoDetalhePage() {
                                         
                                         {a.motivo_status && (
                                           <div className="flex items-center gap-1.5 w-full mt-1">
-                                            <span className="text-gray-500 font-medium">Motivo do status:</span>
+                                            <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Motivo do status:</span>
                                             <span className="text-gray-700 italic">{a.motivo_status}</span>
                                           </div>
                                         )}
