@@ -668,10 +668,7 @@ export default function ProjetoDetalhePage() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">Nome do projeto</label>
-                    <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?"><HelpCircle size={13} /></button>
-                  </div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome do projeto</label>
                   <input type="text" value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-bold text-gray-800" />
                 </div>
@@ -771,7 +768,12 @@ export default function ProjetoDetalhePage() {
             <>
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1">
-                  <h1 className="text-xl font-bold text-gray-800 mb-1">{projeto.nome}</h1>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h1 className="text-xl font-bold text-gray-800">{projeto.nome}</h1>
+                    <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
+                      <HelpCircle size={18} />
+                    </button>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded font-medium border border-gray-200">
                       {projeto.setor_lider?.codigo} — {projeto.setor_lider?.nome_completo}

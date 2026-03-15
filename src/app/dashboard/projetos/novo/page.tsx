@@ -420,7 +420,12 @@ export default function NovoProjetoPage() {
         <ArrowLeft size={16} /> Voltar aos projetos
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Novo Projeto</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Novo Projeto</h1>
+        <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
+          <HelpCircle size={20} />
+        </button>
+      </div>
 
       <div className="space-y-6">
         {/* Dados do projeto */}
@@ -433,12 +438,7 @@ export default function NovoProjetoPage() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Nome do projeto <span className="text-red-500">*</span></label>
-                  <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
-                    <HelpCircle size={15} />
-                  </button>
-                </div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nome do projeto <span className="text-red-500">*</span></label>
                 <input type="text" value={nome} onChange={e => setNome(e.target.value)} 
                   className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
                   placeholder="Nome claro e objetivo" />
