@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
+import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
@@ -46,6 +47,7 @@ export default function NovoProjetoPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
+  const [helpType, setHelpType] = useState<HelpType>(null)
   const [tipoAcao, setTipoAcao] = useState<string[]>([])
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
@@ -412,6 +414,7 @@ export default function NovoProjetoPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
+      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} />
       <button onClick={() => router.push('/dashboard/projetos')}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar aos projetos
@@ -430,7 +433,12 @@ export default function NovoProjetoPage() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nome do projeto <span className="text-red-500">*</span></label>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Nome do projeto <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
                 <input type="text" value={nome} onChange={e => setNome(e.target.value)} 
                   className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
                   placeholder="Nome claro e objetivo" />
@@ -542,7 +550,12 @@ export default function NovoProjetoPage() {
         {/* Entregas */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-700">Entregas</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-gray-700">Entregas</h2>
+              <button type="button" onClick={() => setHelpType('entrega')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Entrega?">
+                <HelpCircle size={15} />
+              </button>
+            </div>
             <button type="button" onClick={addEntrega}
               className="flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700 font-medium">
               <PackagePlus size={16} /> Adicionar entrega
@@ -611,7 +624,12 @@ export default function NovoProjetoPage() {
                   {/* Atividades */}
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-gray-600">Atividades</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-600">Atividades</span>
+                        <button type="button" onClick={() => setHelpType('atividade')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Atividade?">
+                          <HelpCircle size={13} />
+                        </button>
+                      </div>
                       <button type="button" onClick={() => addAtividade(eIdx)}
                         className="text-[11px] text-orange-500 hover:text-orange-700 font-medium flex items-center gap-1">
                         <ListPlus size={13} /> Atividade

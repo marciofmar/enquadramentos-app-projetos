@@ -8,6 +8,7 @@ import {
   CheckCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
+import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import type { Profile } from '@/lib/types'
 
 const QUINZENAS = (() => {
@@ -67,6 +68,7 @@ export default function ProjetoDetalhePage() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
+  const [helpType, setHelpType] = useState<HelpType>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -652,6 +654,7 @@ export default function ProjetoDetalhePage() {
   return (
     <div>
       <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
+      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} />
       <button onClick={() => router.push('/dashboard/projetos')}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar aos projetos
@@ -665,7 +668,10 @@ export default function ProjetoDetalhePage() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome do projeto</label>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">Nome do projeto</label>
+                    <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?"><HelpCircle size={13} /></button>
+                  </div>
                   <input type="text" value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-bold text-gray-800" />
                 </div>
@@ -873,7 +879,10 @@ export default function ProjetoDetalhePage() {
 
       {/* Entregas + Atividades */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-gray-700">Entregas</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold text-gray-700">Entregas</h2>
+          <button type="button" onClick={() => setHelpType('entrega')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Entrega?"><HelpCircle size={16} /></button>
+        </div>
         {canCreate && (
           <button onClick={addNewEntrega}
             className="flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700 font-medium">
@@ -1068,9 +1077,12 @@ export default function ProjetoDetalhePage() {
                         <div className="absolute -left-2 top-6 bottom-6 w-0.5 bg-gray-200 rounded-full hidden sm:block"></div>
 
                         <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-2">
-                          <h4 className="text-sm font-bold text-gray-600 uppercase tracking-widest flex items-center gap-1.5">
-                            <ListPlus size={16} /> Atividades da Entrega
-                          </h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-gray-600 uppercase tracking-widest flex items-center gap-1.5">
+                              <ListPlus size={16} /> Atividades da Entrega
+                            </h4>
+                            <button type="button" onClick={() => setHelpType('atividade')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Atividade?"><HelpCircle size={14} /></button>
+                          </div>
                           {canCreate && (
                             <button onClick={() => addNewAtividade(e.id)}
                               className="text-xs bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300 px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 transition-all shadow-sm">
