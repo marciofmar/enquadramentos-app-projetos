@@ -1039,41 +1039,50 @@ export default function ProjetoDetalhePage() {
                           placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
                       </div>
 
-                      <div className="flex flex-wrap items-end gap-3">
-                        {/* Status — destaque visual */}
-                        <div className="min-w-[160px]">
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
-                          <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                            className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                              editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                              editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                              editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                              editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                              'border-gray-300 bg-white text-gray-700'
-                            }`}>
-                            {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                          </select>
-                          <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
-                            {STATUS_ENTREGA[editForm.status]?.hint}
-                          </p>
-                        </div>
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-end gap-3">
+                          {/* Status — destaque visual */}
+                          <div className="min-w-[160px]">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+                            <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                              className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                'border-gray-300 bg-white text-gray-700'
+                              }`}>
+                              {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
+                          </div>
 
-                        {/* Quinzena — compacto */}
-                        <div className="w-[180px]">
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
-                          <select value={editForm.data_final_prevista}
-                            onChange={ev => setEditForm({ ...editForm, data_final_prevista: ev.target.value })}
-                            className="w-full input-field text-xs">
-                            <option value="">Sem prazo</option>
-                            {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
-                          </select>
-                        </div>
+                          {/* Quinzena — compacto */}
+                          <div className="w-[180px]">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
+                            <select value={editForm.data_final_prevista}
+                              onChange={ev => setEditForm({ ...editForm, data_final_prevista: ev.target.value })}
+                              className="w-full input-field text-xs">
+                              <option value="">Sem prazo</option>
+                              {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                            </select>
+                          </div>
 
-                        {/* Motivo */}
-                        <div className="flex-1 min-w-[180px]">
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Motivo do status</label>
-                          <input type="text" value={editForm.motivo_status} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                            placeholder="Opcional" className="input-field text-xs" />
+                          {/* Motivo */}
+                          <div className="flex-1 min-w-[180px]">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Motivo do status</label>
+                            <input type="text" value={editForm.motivo_status} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                              placeholder="Opcional" className="input-field text-xs" />
+                          </div>
+                        </div>
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
+                          editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                          editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                          editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                          'bg-gray-50 text-gray-500 border border-gray-100'
+                        }`}>
+                          <Info size={12} className="shrink-0" />
+                          <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
                         </div>
                       </div>
                       <div>
@@ -1203,43 +1212,52 @@ export default function ProjetoDetalhePage() {
                                           className="input-field text-xs" placeholder="Descreva esta atividade" />
                                       </div>
 
-                                      <div className="flex flex-wrap items-end gap-2">
-                                        <div className="w-[140px]">
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
-                                          <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                                            className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                                              editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                              editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                              editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                              editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                              'border-gray-300 bg-white text-gray-700'
-                                            }`}>
-                                            {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                          </select>
-                                          <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
-                                            {STATUS_ENTREGA[editForm.status]?.hint}
-                                          </p>
-                                        </div>
+                                      <div className="space-y-1.5">
+                                        <div className="flex flex-wrap items-end gap-2">
+                                          <div className="w-[140px]">
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
+                                            <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                                              className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                                editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                                editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                                editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                                editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                                'border-gray-300 bg-white text-gray-700'
+                                              }`}>
+                                              {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                            </select>
+                                          </div>
 
-                                        <div className="w-[140px]">
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
-                                          <input type="date" value={editForm.data_prevista || ''}
-                                            max={editForm.entrega_data_final || undefined}
-                                            onChange={ev => {
-                                              const nd = ev.target.value
-                                              if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
-                                                alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
-                                                return
-                                              }
-                                              setEditForm({ ...editForm, data_prevista: nd })
-                                            }}
-                                            className="w-full input-field text-xs" />
-                                        </div>
+                                          <div className="w-[140px]">
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                            <input type="date" value={editForm.data_prevista || ''}
+                                              max={editForm.entrega_data_final || undefined}
+                                              onChange={ev => {
+                                                const nd = ev.target.value
+                                                if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
+                                                  alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+                                                  return
+                                                }
+                                                setEditForm({ ...editForm, data_prevista: nd })
+                                              }}
+                                              className="w-full input-field text-xs" />
+                                          </div>
 
-                                        <div className="flex-1 min-w-[140px]">
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
-                                          <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                                            placeholder="Opcional" className="input-field text-xs" />
+                                          <div className="flex-1 min-w-[140px]">
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
+                                            <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                                              placeholder="Opcional" className="input-field text-xs" />
+                                          </div>
+                                        </div>
+                                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
+                                          editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                          editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                          editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                          editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                          'bg-gray-50 text-gray-500 border border-gray-100'
+                                        }`}>
+                                          <Info size={11} className="shrink-0" />
+                                          <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
                                         </div>
                                       </div>
                                       <div className="flex gap-2 mt-4">
@@ -1319,40 +1337,49 @@ export default function ProjetoDetalhePage() {
                                   <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
                                     className="input-field text-xs" placeholder="Descreva esta atividade" />
                                 </div>
-                                <div className="flex flex-wrap items-end gap-2">
-                                  <div className="w-[140px]">
-                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
-                                    <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                                      className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                                        editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                        editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                        editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                        'border-gray-300 bg-white text-gray-700'
-                                      }`}>
-                                      {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                                    </select>
-                                    <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
-                                      {STATUS_ENTREGA[editForm.status]?.hint}
-                                    </p>
+                                <div className="space-y-1.5">
+                                  <div className="flex flex-wrap items-end gap-2">
+                                    <div className="w-[140px]">
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
+                                      <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                                        className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                          editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                          editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                          editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                          'border-gray-300 bg-white text-gray-700'
+                                        }`}>
+                                        {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                      </select>
+                                    </div>
+                                    <div className="w-[140px]">
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                      <input type="date" value={editForm.data_prevista || ''}
+                                        max={editForm.entrega_data_final || undefined}
+                                        onChange={ev => {
+                                          const nd = ev.target.value
+                                          if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
+                                            alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+                                            return
+                                          }
+                                          setEditForm({ ...editForm, data_prevista: nd })
+                                        }}
+                                        className="w-full input-field text-xs" />
+                                    </div>
+                                    <div className="flex-1 min-w-[140px]">
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
+                                      <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
+                                        placeholder="Opcional" className="input-field text-xs" />
+                                    </div>
                                   </div>
-                                  <div className="w-[140px]">
-                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
-                                    <input type="date" value={editForm.data_prevista || ''}
-                                      max={editForm.entrega_data_final || undefined}
-                                      onChange={ev => {
-                                        const nd = ev.target.value
-                                        if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
-                                          alert(`A data não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
-                                          return
-                                        }
-                                        setEditForm({ ...editForm, data_prevista: nd })
-                                      }}
-                                      className="w-full input-field text-xs" />
-                                  </div>
-                                  <div className="flex-1 min-w-[140px]">
-                                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
-                                    <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                                      placeholder="Opcional" className="input-field text-xs" />
+                                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
+                                    editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                    editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                    editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                    editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                    'bg-gray-50 text-gray-500 border border-gray-100'
+                                  }`}>
+                                    <Info size={11} className="shrink-0" />
+                                    <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
                                   </div>
                                 </div>
                                 <div>
