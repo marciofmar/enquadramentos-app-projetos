@@ -20,8 +20,10 @@ interface CalendarItem {
   projeto_nome: string
   setores: string[]
   acoes: { numero: string; oe_codigo: string }[]
-  // Campos para edição de datas
+  // Campos para edição de datas e exibição
   setor_lider_id: number
+  setor_lider_codigo: string
+  setor_lider_nome: string
   entrega_id: number | null // para atividades: ID da entrega pai
   entrega_data_final: string | null // para atividades: data limite da entrega
   atividades_datas: { nome: string; data: string }[] // para entregas: datas das atividades filhas
@@ -163,7 +165,7 @@ export default function CalendarioPage() {
         .order('numero'),
       supabase.from('setores').select('id, codigo, nome_completo').order('codigo'),
       supabase.from('projetos')
-        .select(`id, nome, setor_lider_id,
+        .select(`id, nome, setor_lider_id, setor_lider:setor_lider_id(codigo, nome_completo),
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
           entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas,
             entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
@@ -193,8 +195,9 @@ export default function CalendarioPage() {
         }))
 
         ;(p.entregas || []).forEach((e: any) => {
-          // Collect setores from entrega
+          // Collect setores from entrega (incluindo setor líder do projeto)
           const setorSet = new Set<string>()
+          if (p.setor_lider?.codigo) setorSet.add(p.setor_lider.codigo)
           e.entrega_participantes?.forEach((ep: any) => {
             if (ep.tipo_participante === 'setor' && ep.setor) setorSet.add(ep.setor.codigo)
             else if (ep.tipo_participante === 'externo_subsegop') setorSet.add('Ext. SUBSEGOP')
@@ -222,6 +225,8 @@ export default function CalendarioPage() {
               setores: Array.from(setorSet),
               acoes: projetoAcoes,
               setor_lider_id: p.setor_lider_id,
+              setor_lider_codigo: p.setor_lider?.codigo || '',
+              setor_lider_nome: p.setor_lider?.nome_completo || '',
               entrega_id: null,
               entrega_data_final: null,
               atividades_datas: ativDatas,
@@ -252,6 +257,8 @@ export default function CalendarioPage() {
                 setores: Array.from(aSetorSet),
                 acoes: projetoAcoes,
                 setor_lider_id: p.setor_lider_id,
+                setor_lider_codigo: p.setor_lider?.codigo || '',
+                setor_lider_nome: p.setor_lider?.nome_completo || '',
                 entrega_id: e.id,
                 entrega_data_final: e.data_final_prevista || null,
                 atividades_datas: [],
@@ -689,7 +696,12 @@ export default function CalendarioPage() {
                   {selectedItem.entrega_nome && (
                     <p className="text-xs text-gray-500 mt-1">Entrega: <span className="font-medium">{selectedItem.entrega_nome}</span></p>
                   )}
-                  <p className="text-xs text-gray-400 mt-0.5">{selectedItem.projeto_nome}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {selectedItem.projeto_nome}
+                    {selectedItem.setor_lider_codigo && (
+                      <> — <span className="font-medium">{selectedItem.setor_lider_codigo}</span></>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
