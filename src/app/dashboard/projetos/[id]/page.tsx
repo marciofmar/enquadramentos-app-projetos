@@ -412,10 +412,10 @@ export default function ProjetoDetalhePage() {
 
   async function addNewEntrega() {
     const { data, error } = await supabase.from('entregas').insert({
-      projeto_id: projeto.id, nome: 'Nova entrega', descricao: 'Descreva esta entrega', status: 'aberta'
+      projeto_id: projeto.id, nome: '', descricao: '', status: 'aberta'
     }).select().single()
     if (error) { alert(error.message); return }
-    await auditLog('create', 'entrega', data.id, null, { nome: 'Nova entrega', projeto_id: projeto.id })
+    await auditLog('create', 'entrega', data.id, null, { nome: '', projeto_id: projeto.id })
     loadAll()
     setTimeout(() => startEditEntrega(data), 300)
   }
@@ -947,10 +947,16 @@ export default function ProjetoDetalhePage() {
                   {isEditing ? (
                     <div className="space-y-3">
                       {(() => { return (<>
-                      <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                        className="input-field text-sm" placeholder="Nome" />
-                      <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                        className="input-field text-sm resize-none" rows={2} placeholder="Descrição" />
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome</label>
+                        <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
+                          className="input-field text-sm" placeholder="Nome da entrega" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
+                        <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
+                          className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+                      </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
                         <textarea value={editForm.criterios_aceite || ''}
@@ -1108,10 +1114,16 @@ export default function ProjetoDetalhePage() {
                                 <div className="p-4">
                                   {isEditA ? (
                                     <div className="space-y-2">
-                                      <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                                        className="input-field text-xs" placeholder="Nome" />
-                                      <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                                        className="input-field text-xs" placeholder="Descrição" />
+                                      <div>
+                                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Nome</label>
+                                        <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
+                                          className="input-field text-xs" placeholder="Nome da atividade" />
+                                      </div>
+                                      <div>
+                                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Descrição</label>
+                                        <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
+                                          className="input-field text-xs" placeholder="Descreva esta atividade" />
+                                      </div>
 
                                       <div className="flex flex-wrap items-end gap-2">
                                         <div className="w-[140px]">
@@ -1216,10 +1228,16 @@ export default function ProjetoDetalhePage() {
                             <div className="rounded-xl p-4 bg-blue-50 border border-blue-300 ring-2 ring-blue-100 shadow-md">
                               <div className="space-y-3">
                                 <p className="text-sm font-bold text-blue-800 mb-2">Nova atividade</p>
-                                <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                                  className="input-field text-xs" placeholder="Nome da atividade" />
-                                <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                                  className="input-field text-xs" placeholder="Descrição" />
+                                <div>
+                                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Nome</label>
+                                  <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
+                                    className="input-field text-xs" placeholder="Nome da atividade" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Descrição</label>
+                                  <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
+                                    className="input-field text-xs" placeholder="Descreva esta atividade" />
+                                </div>
                                 <div className="flex flex-wrap items-end gap-2">
                                   <div className="w-[140px]">
                                     <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>

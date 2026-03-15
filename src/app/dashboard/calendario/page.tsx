@@ -3,7 +3,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink, Edit3, Save } from 'lucide-react'
+import type { Profile } from '@/lib/types'
 
 interface CalendarItem {
   id: number
@@ -19,6 +20,11 @@ interface CalendarItem {
   projeto_nome: string
   setores: string[]
   acoes: { numero: string; oe_codigo: string }[]
+  // Campos para edição de datas
+  setor_lider_id: number
+  entrega_id: number | null // para atividades: ID da entrega pai
+  entrega_data_final: string | null // para atividades: data limite da entrega
+  atividades_datas: { nome: string; data: string }[] // para entregas: datas das atividades filhas
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -84,6 +90,21 @@ function formatDateKey(date: Date) {
   return `${y}-${m}-${d}`
 }
 
+const QUINZENAS = (() => {
+  const opts: { value: string; label: string }[] = []
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+  for (let y = 2026; y <= 2027; y++) {
+    for (let m = 0; m < 12; m++) {
+      for (const q of [1, 2]) {
+        const day = q === 1 ? 15 : new Date(y, m + 1, 0).getDate()
+        const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        opts.push({ value: dateStr, label: `${meses[m]}/${String(y).slice(-2)} – ${q}ª quinzena` })
+      }
+    }
+  }
+  return opts
+})()
+
 const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 const MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const DAY_NAMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
@@ -110,6 +131,16 @@ export default function CalendarioPage() {
   const [acoes, setAcoes] = useState<{ numero: string; nome: string; oe_codigo: string }[]>([])
   const [setores, setSetores] = useState<{ id: number; codigo: string; nome_completo: string }[]>([])
 
+  // Auth, configs, solicitações
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [configs, setConfigs] = useState<Record<string, string>>({})
+  const [solicitacoes, setSolicitacoes] = useState<any[]>([])
+
+  // Date editing
+  const [editingDate, setEditingDate] = useState(false)
+  const [newDate, setNewDate] = useState('')
+  const [savingDate, setSavingDate] = useState(false)
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -118,14 +149,21 @@ export default function CalendarioPage() {
   async function loadAll() {
     setLoading(true)
 
-    const [oesRes, acoesRes, setoresRes, projRes] = await Promise.all([
+    // Load user profile
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (p) setProfile(p as any)
+    }
+
+    const [oesRes, acoesRes, setoresRes, projRes, cfgsRes, solsRes] = await Promise.all([
       supabase.from('objetivos_estrategicos').select('codigo, nome').order('codigo'),
       supabase.from('acoes_estrategicas')
         .select('numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo)')
         .order('numero'),
       supabase.from('setores').select('id, codigo, nome_completo').order('codigo'),
       supabase.from('projetos')
-        .select(`id, nome,
+        .select(`id, nome, setor_lider_id,
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
           entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas,
             entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
@@ -133,6 +171,8 @@ export default function CalendarioPage() {
               atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
           )`)
         .order('nome'),
+      supabase.from('configuracoes').select('chave, valor'),
+      supabase.from('solicitacoes_alteracao').select('*').eq('status', 'em_analise'),
     ])
 
     if (oesRes.data) setOes(oesRes.data)
@@ -140,6 +180,8 @@ export default function CalendarioPage() {
       numero: a.numero, nome: a.nome, oe_codigo: a.objetivo_estrategico?.codigo || ''
     })))
     if (setoresRes.data) setSetores(setoresRes.data)
+    if (cfgsRes.data) { const m: Record<string, string> = {}; cfgsRes.data.forEach((c: any) => { m[c.chave] = c.valor }); setConfigs(m) }
+    if (solsRes.data) setSolicitacoes(solsRes.data)
 
     if (projRes.data) {
       const calItems: CalendarItem[] = []
@@ -159,6 +201,11 @@ export default function CalendarioPage() {
             else if (ep.tipo_participante === 'externo_sedec') setorSet.add('Ext. SEDEC')
           })
 
+          // Collect atividades dates for entrega validation
+          const ativDatas = (e.atividades || [])
+            .filter((a: any) => a.data_prevista)
+            .map((a: any) => ({ nome: a.nome, data: a.data_prevista }))
+
           if (e.data_final_prevista) {
             calItems.push({
               id: e.id,
@@ -174,6 +221,10 @@ export default function CalendarioPage() {
               projeto_nome: p.nome,
               setores: Array.from(setorSet),
               acoes: projetoAcoes,
+              setor_lider_id: p.setor_lider_id,
+              entrega_id: null,
+              entrega_data_final: null,
+              atividades_datas: ativDatas,
             })
           }
 
@@ -200,6 +251,10 @@ export default function CalendarioPage() {
                 projeto_nome: p.nome,
                 setores: Array.from(aSetorSet),
                 acoes: projetoAcoes,
+                setor_lider_id: p.setor_lider_id,
+                entrega_id: e.id,
+                entrega_data_final: e.data_final_prevista || null,
+                atividades_datas: [],
               })
             }
           })
@@ -312,9 +367,108 @@ export default function CalendarioPage() {
     }
   }
 
+  // Permission logic
+  const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
+
+  function canEditDate(item: CalendarItem): boolean {
+    if (!profile) return false
+    if (isAdminOrMaster) return true
+    if (profile.role !== 'gestor' || profile.setor_id !== item.setor_lider_id) return false
+    if (item.tipo === 'entrega') return configs['proj_permitir_edicao_datas'] !== 'false'
+    if (item.tipo === 'atividade') return configs['proj_permitir_edicao_datas_atividades'] !== 'false'
+    return false
+  }
+
+  function needsApprovalForItem(item: CalendarItem): boolean {
+    if (isAdminOrMaster) return false
+    return profile?.role === 'gestor' && profile.setor_id === item.setor_lider_id
+      && configs['proj_exigir_aprovacao_edicao'] === 'true'
+  }
+
+  function hasPendingSolicitacao(tipoEntidade: string, entidadeId: number) {
+    return solicitacoes.some(s => s.tipo_entidade === tipoEntidade && s.entidade_id === entidadeId && s.status === 'em_analise')
+  }
+
+  async function auditLog(tipo: string, entidade: string, entidadeId: number, anterior: any, novo: any) {
+    await supabase.from('audit_log').insert({
+      usuario_id: profile!.id, usuario_nome: profile!.nome,
+      tipo_acao: tipo, entidade, entidade_id: entidadeId,
+      conteudo_anterior: anterior, conteudo_novo: novo
+    })
+  }
+
+  async function saveDate(item: CalendarItem) {
+    // Não houve alteração
+    if (newDate === item.data) { setEditingDate(false); return }
+
+    // Não permitir remover a data pelo calendário (item desapareceria)
+    if (!newDate) {
+      alert('Não é possível remover a data pelo calendário. Para remover o prazo, edite diretamente no projeto.')
+      return
+    }
+
+    setSavingDate(true)
+
+    // Validação para entregas: atividades não podem ter data posterior
+    if (item.tipo === 'entrega') {
+      const posteriores = item.atividades_datas.filter(a => a.data > newDate)
+      if (posteriores.length > 0) {
+        const nomes = posteriores.map(a => `"${a.nome}"`).join(', ')
+        alert(`Não é possível definir esta quinzena. As atividades ${nomes} têm datas posteriores. Ajuste-as primeiro.`)
+        setSavingDate(false); return
+      }
+    }
+
+    // Validação para atividades: data não pode ser posterior à quinzena da entrega
+    if (item.tipo === 'atividade' && item.entrega_data_final && newDate > item.entrega_data_final) {
+      alert(`A data da atividade não pode ser posterior à quinzena da entrega (${item.entrega_data_final}).`)
+      setSavingDate(false); return
+    }
+
+    // Fluxo de aprovação
+    if (needsApprovalForItem(item)) {
+      if (hasPendingSolicitacao(item.tipo, item.id)) {
+        alert(`Já existe uma solicitação pendente para esta ${item.tipo === 'entrega' ? 'entrega' : 'atividade'}. Aguarde a avaliação.`)
+        setSavingDate(false); return
+      }
+      const dados = item.tipo === 'entrega'
+        ? { data_final_prevista: newDate }
+        : { data_prevista: newDate }
+      const { error } = await supabase.from('solicitacoes_alteracao').insert({
+        solicitante_id: profile!.id,
+        solicitante_nome: profile!.nome,
+        tipo_entidade: item.tipo,
+        entidade_id: item.id,
+        entidade_nome: item.nome,
+        projeto_id: item.projeto_id,
+        tipo_operacao: 'edicao',
+        dados_alteracao: dados,
+      })
+      if (error) { alert(`Erro ao criar solicitação: ${error.message}`); setSavingDate(false); return }
+      alert('Solicitação enviada para o Gabinete de Gestão de Projetos para avaliação.')
+      setEditingDate(false); setSavingDate(false); loadAll(); return
+    }
+
+    // Edição direta
+    if (item.tipo === 'entrega') {
+      const { error } = await supabase.from('entregas').update({ data_final_prevista: newDate }).eq('id', item.id)
+      if (error) { alert(error.message); setSavingDate(false); return }
+      await auditLog('update', 'entrega', item.id, { data_final_prevista: item.data }, { data_final_prevista: newDate })
+    } else {
+      const { error } = await supabase.from('atividades').update({ data_prevista: newDate }).eq('id', item.id)
+      if (error) { alert(error.message); setSavingDate(false); return }
+      await auditLog('update', 'atividade', item.id, { data_prevista: item.data }, { data_prevista: newDate })
+    }
+
+    setEditingDate(false); setSavingDate(false)
+    setSelectedItem(null)
+    loadAll()
+  }
+
   function handleItemClick(item: CalendarItem, e: React.MouseEvent) {
     e.stopPropagation()
     setSelectedItem(item)
+    setEditingDate(false)
   }
 
   function switchToWeekOf(date: Date) {
@@ -560,16 +714,85 @@ export default function CalendarioPage() {
             <div className="p-5 space-y-4">
 
               {/* Prazo */}
-              <div className="flex items-center gap-2 text-sm">
-                <CalendarDays size={14} className="text-gray-400 shrink-0" />
-                <span className="text-gray-500 font-medium">Prazo:</span>
-                <span className="text-gray-700">
-                  {(() => {
-                    const [y, m, d] = selectedItem.data.split('-').map(Number)
-                    return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
-                  })()}
-                </span>
-              </div>
+              {!editingDate ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <CalendarDays size={14} className="text-gray-400 shrink-0" />
+                  <span className="text-gray-500 font-medium">Prazo:</span>
+                  <span className="text-gray-700">
+                    {(() => {
+                      const [y, m, d] = selectedItem.data.split('-').map(Number)
+                      return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+                    })()}
+                  </span>
+                  {canEditDate(selectedItem) && (
+                    <button
+                      onClick={() => { setEditingDate(true); setNewDate(selectedItem.data) }}
+                      className="text-gray-400 hover:text-orange-500 transition-colors p-0.5"
+                      title="Alterar data"
+                    >
+                      <Edit3 size={13} />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <CalendarDays size={13} /> Alterar prazo
+                  </div>
+                  {selectedItem.tipo === 'entrega' ? (
+                    <select
+                      value={newDate}
+                      onChange={ev => setNewDate(ev.target.value)}
+                      className="input-field text-sm"
+                    >
+                      {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="date"
+                      value={newDate}
+                      max={selectedItem.entrega_data_final || undefined}
+                      onChange={ev => {
+                        const nd = ev.target.value
+                        if (nd && selectedItem.entrega_data_final && nd > selectedItem.entrega_data_final) {
+                          alert(`A data não pode ser posterior à quinzena da entrega (${selectedItem.entrega_data_final}).`)
+                          return
+                        }
+                        setNewDate(nd)
+                      }}
+                      className="input-field text-sm"
+                    />
+                  )}
+                  {selectedItem.tipo === 'atividade' && selectedItem.entrega_data_final && (
+                    <p className="text-[10px] text-gray-500">
+                      Data máxima: {(() => {
+                        const [y, m, d] = selectedItem.entrega_data_final!.split('-').map(Number)
+                        return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+                      })()}
+                    </p>
+                  )}
+                  {needsApprovalForItem(selectedItem) && (
+                    <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                      A alteração será enviada como solicitação para aprovação do Gabinete de Gestão de Projetos.
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => saveDate(selectedItem)}
+                      disabled={savingDate}
+                      className="flex items-center gap-1 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Save size={12} /> {savingDate ? 'Salvando...' : 'Salvar'}
+                    </button>
+                    <button
+                      onClick={() => setEditingDate(false)}
+                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 transition-colors"
+                    >
+                      <X size={12} /> Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Motivo do status */}
               {selectedItem.motivo_status && (
