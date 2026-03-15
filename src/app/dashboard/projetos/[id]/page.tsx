@@ -26,12 +26,12 @@ const QUINZENAS = (() => {
   return opts
 })()
 
-const STATUS_ENTREGA: Record<string, { label: string; color: string; bg: string }> = {
-  aberta: { label: 'Aberta', color: 'text-gray-600', bg: 'bg-gray-100' },
-  em_andamento: { label: 'Em andamento', color: 'text-blue-700', bg: 'bg-blue-100' },
-  aguardando: { label: 'Aguardando', color: 'text-yellow-700', bg: 'bg-yellow-100' },
-  resolvida: { label: 'Resolvida', color: 'text-green-700', bg: 'bg-green-100' },
-  cancelada: { label: 'Cancelada', color: 'text-red-700', bg: 'bg-red-100' },
+const STATUS_ENTREGA: Record<string, { label: string; color: string; bg: string; hint: string }> = {
+  aberta: { label: 'Aberta', color: 'text-gray-600', bg: 'bg-gray-100', hint: 'Ainda não iniciado' },
+  em_andamento: { label: 'Em andamento', color: 'text-blue-700', bg: 'bg-blue-100', hint: 'Trabalho em andamento' },
+  aguardando: { label: 'Aguardando', color: 'text-yellow-700', bg: 'bg-yellow-100', hint: 'Parado — depende de retorno de outro órgão' },
+  resolvida: { label: 'Resolvida', color: 'text-green-700', bg: 'bg-green-100', hint: 'Finalizado' },
+  cancelada: { label: 'Cancelada', color: 'text-red-700', bg: 'bg-red-100', hint: 'Não é mais necessário' },
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -1053,6 +1053,9 @@ export default function ProjetoDetalhePage() {
                             }`}>
                             {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                           </select>
+                          <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                            {STATUS_ENTREGA[editForm.status]?.hint}
+                          </p>
                         </div>
 
                         {/* Quinzena — compacto */}
@@ -1213,6 +1216,9 @@ export default function ProjetoDetalhePage() {
                                             }`}>
                                             {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                           </select>
+                                          <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                                            {STATUS_ENTREGA[editForm.status]?.hint}
+                                          </p>
                                         </div>
 
                                         <div className="w-[140px]">
@@ -1325,6 +1331,9 @@ export default function ProjetoDetalhePage() {
                                       }`}>
                                       {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                     </select>
+                                    <p className={`text-[10px] mt-0.5 leading-tight ${editForm.status === 'aguardando' ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                                      {STATUS_ENTREGA[editForm.status]?.hint}
+                                    </p>
                                   </div>
                                   <div className="w-[140px]">
                                     <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
