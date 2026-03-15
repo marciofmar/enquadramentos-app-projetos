@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Edit3, Trash2, Save, X, Plus, PackagePlus, ListPlus,
-  CheckCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle
+  CheckCircle, CheckCircle2, XCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
@@ -38,6 +38,8 @@ const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   em_dia: { label: 'Em dia', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-300', icon: CheckCircle },
   proximo: { label: 'Próximo do prazo', color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-300', icon: Clock },
   atrasado: { label: 'Atrasado', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-300', icon: AlertTriangle },
+  concluido: { label: 'Concluído', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-300', icon: CheckCircle2 },
+  cancelado: { label: 'Cancelado', color: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-300', icon: XCircle },
 }
 
 export default function ProjetoDetalhePage() {
@@ -162,6 +164,15 @@ export default function ProjetoDetalhePage() {
     if (active.some((e: any) => new Date(e.data_final_prevista) < now)) return 'atrasado'
     if (active.some((e: any) => { const d = new Date(e.data_final_prevista); return d >= now && d <= quinzena })) return 'proximo'
     return 'em_dia'
+  }, [projeto])
+
+  // Status do projeto (calculado a partir das entregas)
+  const statusProjeto = useMemo(() => {
+    const entregas = projeto?.entregas || []
+    if (entregas.length === 0) return 'em_andamento'
+    if (entregas.every((e: any) => e.status === 'cancelada')) return 'cancelado'
+    if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) return 'concluido'
+    return 'em_andamento'
   }, [projeto])
 
   // Gestores precisam de aprovação para editar/excluir (somente se configuração = 'true')
@@ -338,6 +349,18 @@ export default function ProjetoDetalhePage() {
             setSaving(false); return
           }
         }
+      }
+    }
+
+    // Regra 2.2: Não permitir status 'resolvida' se há atividades pendentes
+    if (editForm.status === 'resolvida' && entrega?.atividades?.length > 0) {
+      const pendentes = entrega.atividades.filter((a: any) =>
+        a.status === 'aberta' || a.status === 'em_andamento' || a.status === 'aguardando'
+      )
+      if (pendentes.length > 0) {
+        const nomes = pendentes.map((a: any) => `"${a.nome}"`).join(', ')
+        alert(`Não é possível marcar esta entrega como resolvida. As seguintes atividades ainda não foram concluídas: ${nomes}. Resolva ou cancele essas atividades antes.`)
+        setSaving(false); return
       }
     }
 
@@ -535,6 +558,57 @@ export default function ProjetoDetalhePage() {
       if (insAPErr) { alert(`Erro ao salvar participantes: ${insAPErr.message}`); setSaving(false); return }
     }
 
+    // Regras de coerência de status entrega ↔ atividades (somente para saves diretos, não para solicitações)
+    if (!needsApproval || isNew) {
+      const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
+      if (entrega) {
+        const statusNaoTerminal = !['resolvida', 'cancelada'].includes(editForm.status)
+        const entregaTerminal = entrega.status === 'resolvida' || entrega.status === 'cancelada'
+
+        // Regra 4: Atividade não-terminal numa entrega terminal → reverter status da entrega
+        if (entregaTerminal && statusNaoTerminal) {
+          const ativAntes = isNew ? null : (entrega.atividades || []).find((a: any) => a.id === realAtivId)
+          const antesEraTerminal = isNew || ['resolvida', 'cancelada'].includes(ativAntes?.status)
+          if (antesEraTerminal) {
+            await supabase.from('entregas').update({ status: 'em_andamento' }).eq('id', entregaId)
+            await auditLog('update', 'entrega', entregaId, { status: entrega.status }, { status: 'em_andamento' })
+            alert(`O status da entrega "${entrega.nome}" foi alterado de "${STATUS_ENTREGA[entrega.status].label}" para "Em andamento" pois ${isNew ? 'foi adicionada uma nova atividade' : 'uma atividade mudou para status não concluído'}.`)
+          }
+        }
+        // Regra 2.1: Todas as atividades em status terminal → perguntar sobre a entrega
+        else if (!entregaTerminal) {
+          const atualTerminal = editForm.status === 'resolvida' || editForm.status === 'cancelada'
+          if (atualTerminal) {
+            const outras = (entrega.atividades || []).filter((a: any) => a.id !== realAtivId)
+            const outrasTerminais = outras.every((a: any) => a.status === 'resolvida' || a.status === 'cancelada')
+
+            if (outrasTerminais) {
+              const temResolvida = editForm.status === 'resolvida' || outras.some((a: any) => a.status === 'resolvida')
+              const todasCanceladas = editForm.status === 'cancelada' && outras.every((a: any) => a.status === 'cancelada')
+
+              if (todasCanceladas) {
+                const confirma = confirm('Todas as atividades desta entrega foram canceladas. Deseja cancelar a entrega também?')
+                if (confirma) {
+                  await supabase.from('entregas').update({ status: 'cancelada' }).eq('id', entregaId)
+                  await auditLog('update', 'entrega', entregaId, { status: entrega.status }, { status: 'cancelada' })
+                } else {
+                  alert('Entendido. Quando possível, crie uma nova atividade para esta entrega.')
+                }
+              } else if (temResolvida) {
+                const confirma = confirm('Todas as atividades desta entrega estão concluídas. Deseja marcar a entrega como resolvida também?')
+                if (confirma) {
+                  await supabase.from('entregas').update({ status: 'resolvida' }).eq('id', entregaId)
+                  await auditLog('update', 'entrega', entregaId, { status: entrega.status }, { status: 'resolvida' })
+                } else {
+                  alert('Entendido. Quando possível, crie a atividade que falta para que a entrega possa ser considerada resolvida.')
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     setEditingAtividade(null); setSaving(false); loadAll()
   }
 
@@ -648,7 +722,8 @@ export default function ProjetoDetalhePage() {
   if (loading) return <div className="flex justify-center py-20"><div className="animate-pulse text-sedec-500">Carregando...</div></div>
   if (!projeto) return <div className="text-center py-20 text-gray-400">Projeto não encontrado.</div>
 
-  const pont = PONT_CONFIG[pontualidade]
+  const pontKey = statusProjeto !== 'em_andamento' ? statusProjeto : pontualidade
+  const pont = PONT_CONFIG[pontKey]
   const PontIcon = pont.icon
 
   return (

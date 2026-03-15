@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 interface ProjetoCard {
@@ -21,7 +21,7 @@ interface ProjetoCard {
   atividades_atrasadas: { nome: string; data: string }[]
   pontualidade: 'em_dia' | 'proximo' | 'atrasado'
   tem_atividades_atrasadas: boolean
-  status_projeto: 'em_andamento' | 'finalizado' | 'abortado'
+  status_projeto: 'em_andamento' | 'concluido' | 'cancelado'
   solicitacoes_pendentes: number
 }
 
@@ -29,6 +29,8 @@ const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   em_dia: { label: 'Em dia', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', icon: CheckCircle },
   proximo: { label: 'Próximo do prazo', color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-300', icon: Clock },
   atrasado: { label: 'Atrasado', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-300', icon: AlertTriangle },
+  concluido: { label: 'Concluído', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-300', icon: CheckCircle2 },
+  cancelado: { label: 'Cancelado', color: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-300', icon: XCircle },
 }
 
 export default function ProjetosPage() {
@@ -180,10 +182,10 @@ export default function ProjetosPage() {
 
         // Status do projeto
         const entregas = p.entregas || []
-        let status_projeto: 'em_andamento' | 'finalizado' | 'abortado' = 'em_andamento'
+        let status_projeto: 'em_andamento' | 'concluido' | 'cancelado' = 'em_andamento'
         if (entregas.length > 0) {
-          if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'abortado'
-          else if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) status_projeto = 'finalizado'
+          if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'cancelado'
+          else if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) status_projeto = 'concluido'
         }
 
         return {
@@ -325,10 +327,13 @@ export default function ProjetosPage() {
               <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Projetos</span>
             </div>
             {(() => {
-              const atrasados = projetos.filter(p => p.pontualidade === 'atrasado').length
-              const proximos = projetos.filter(p => p.pontualidade === 'proximo').length
-              const emDia = projetos.filter(p => p.pontualidade === 'em_dia').length
-              const comAtivAtrasadas = projetos.filter(p => p.tem_atividades_atrasadas).length
+              const emAndamento = projetos.filter(p => p.status_projeto === 'em_andamento')
+              const atrasados = emAndamento.filter(p => p.pontualidade === 'atrasado').length
+              const proximos = emAndamento.filter(p => p.pontualidade === 'proximo').length
+              const emDia = emAndamento.filter(p => p.pontualidade === 'em_dia').length
+              const comAtivAtrasadas = emAndamento.filter(p => p.tem_atividades_atrasadas).length
+              const concluidos = projetos.filter(p => p.status_projeto === 'concluido').length
+              const cancelados = projetos.filter(p => p.status_projeto === 'cancelado').length
               return <>
                 {emDia > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-green-200 min-w-[100px]">
                   <span className="text-2xl font-bold text-green-600 leading-none">{emDia}</span>
@@ -346,6 +351,14 @@ export default function ProjetosPage() {
                   <span className="text-2xl font-bold text-red-500 leading-none">{comAtivAtrasadas}</span>
                   <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">C/ ativ. atrasada</span>
                 </div>}
+                {concluidos > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-emerald-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-emerald-600 leading-none">{concluidos}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Concluídos</span>
+                </div>}
+                {cancelados > 0 && <div className="flex flex-col items-center justify-center px-4 py-3 rounded-xl bg-white border border-gray-200 min-w-[100px]">
+                  <span className="text-2xl font-bold text-gray-500 leading-none">{cancelados}</span>
+                  <span className="text-[11px] text-gray-500 mt-1 text-center leading-tight">Cancelados</span>
+                </div>}
               </>
             })()}
           </div>
@@ -353,7 +366,7 @@ export default function ProjetosPage() {
           {/* Projetos por tipo de ação */}
           {(() => {
             const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração']
-            const relevantes = projetos.filter(p => p.status_projeto !== 'abortado')
+            const relevantes = projetos.filter(p => p.status_projeto !== 'cancelado')
             return (
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
@@ -361,7 +374,7 @@ export default function ProjetosPage() {
                   {TIPOS.map(tipo => {
                     const projetosTipo = relevantes.filter(p => p.tipo_acao.includes(tipo) || (tipo === 'Integração' && p.tipo_acao.includes('Ação de Integração')))
                     const emAndamento = projetosTipo.filter(p => p.status_projeto === 'em_andamento').length
-                    const finalizados = projetosTipo.filter(p => p.status_projeto === 'finalizado').length
+                    const concluidos = projetosTipo.filter(p => p.status_projeto === 'concluido').length
                     return (
                       <div key={tipo} className="rounded-lg border border-gray-100 p-3 text-center">
                         <span className="text-[11px] font-medium text-purple-600 block mb-2">{tipo}</span>
@@ -371,8 +384,8 @@ export default function ProjetosPage() {
                             <span className="text-[9px] text-gray-400">em andam.</span>
                           </div>
                           <div>
-                            <span className="text-lg font-bold text-green-600 block leading-none">{finalizados}</span>
-                            <span className="text-[9px] text-gray-400">finaliz.</span>
+                            <span className="text-lg font-bold text-green-600 block leading-none">{concluidos}</span>
+                            <span className="text-[9px] text-gray-400">concluíd.</span>
                           </div>
                         </div>
                       </div>
@@ -439,7 +452,8 @@ export default function ProjetosPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
             {projs.map(p => {
-              const pont = PONT_CONFIG[p.pontualidade]
+              const pontKey = p.status_projeto !== 'em_andamento' ? p.status_projeto : p.pontualidade
+              const pont = PONT_CONFIG[pontKey]
               const PontIcon = pont.icon
               const highlight = setorFilter && p.setores_participantes.includes(setorFilter) && p.setor_lider_codigo !== setorFilter
               return (
