@@ -102,6 +102,7 @@ export default function CalendarioPage() {
   const [oeFilter, setOeFilter] = useState('')
   const [acaoFilter, setAcaoFilter] = useState('')
   const [setorFilter, setSetorFilter] = useState('')
+  const [projetoFilter, setProjetoFilter] = useState('')
   const [selectedItem, setSelectedItem] = useState<CalendarItem | null>(null)
 
   // Reference data
@@ -219,15 +220,31 @@ export default function CalendarioPage() {
 
   useEffect(() => { setAcaoFilter('') }, [oeFilter])
 
+  // Derive unique projects from items, filtered by selected sector
+  const filteredProjetos = useMemo(() => {
+    const map = new Map<number, { id: number; nome: string }>()
+    items.forEach(item => {
+      if (setorFilter && !item.setores.includes(setorFilter)) return
+      if (!map.has(item.projeto_id)) {
+        map.set(item.projeto_id, { id: item.projeto_id, nome: item.projeto_nome })
+      }
+    })
+    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome))
+  }, [items, setorFilter])
+
+  // Reset project filter when sector changes (selected project may no longer be valid)
+  useEffect(() => { setProjetoFilter('') }, [setorFilter])
+
   // Filter items
   const filteredItems = useMemo(() => {
     return items.filter(item => {
       if (oeFilter && !item.acoes.some(a => a.oe_codigo === oeFilter)) return false
       if (acaoFilter && !item.acoes.some(a => a.numero === acaoFilter)) return false
       if (setorFilter && !item.setores.includes(setorFilter)) return false
+      if (projetoFilter && item.projeto_id !== Number(projetoFilter)) return false
       return true
     })
-  }, [items, oeFilter, acaoFilter, setorFilter])
+  }, [items, oeFilter, acaoFilter, setorFilter, projetoFilter])
 
   // Group by date
   const itemsByDate = useMemo(() => {
@@ -262,7 +279,7 @@ export default function CalendarioPage() {
     }
   }, [viewMode, currentYear, currentMonth, currentWeekStart, itemsByDate])
 
-  const hasFilters = !!(oeFilter || acaoFilter || setorFilter)
+  const hasFilters = !!(oeFilter || acaoFilter || setorFilter || projetoFilter)
 
   // Navigation
   function goToday() {
@@ -339,13 +356,13 @@ export default function CalendarioPage() {
         <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
           <Filter size={16} /> Filtros
           {hasFilters && (
-            <button onClick={() => { setOeFilter(''); setAcaoFilter(''); setSetorFilter('') }}
+            <button onClick={() => { setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setProjetoFilter('') }}
               className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
               <X size={14} /> Limpar
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
             <option value="">Todos os objetivos</option>
             {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
@@ -357,6 +374,10 @@ export default function CalendarioPage() {
           <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
             <option value="">Todos os setores</option>
             {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
+          </select>
+          <select value={projetoFilter} onChange={e => setProjetoFilter(e.target.value)} className="input-field">
+            <option value="">Todos os projetos</option>
+            {filteredProjetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
         </div>
       </div>
