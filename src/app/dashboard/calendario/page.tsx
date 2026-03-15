@@ -697,7 +697,7 @@ export default function CalendarioPage() {
                     <p className="text-xs text-gray-500 mt-1">Entrega: <span className="font-medium">{selectedItem.entrega_nome}</span></p>
                   )}
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {selectedItem.projeto_nome}
+                    <span className="text-gray-500">Projeto:</span> {selectedItem.projeto_nome}
                     {selectedItem.setor_lider_codigo && (
                       <> — <span className="font-medium">{selectedItem.setor_lider_codigo}</span></>
                     )}
