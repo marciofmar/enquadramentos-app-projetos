@@ -71,6 +71,9 @@ export default function ProjetoDetalhePage() {
   const [saving, setSaving] = useState(false)
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
   const [helpType, setHelpType] = useState<HelpType>(null)
+  const [showNewEntregaForm, setShowNewEntregaForm] = useState(false)
+  const [newEntregaForm, setNewEntregaForm] = useState<any>({})
+  const [allExpanded, setAllExpanded] = useState(false)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -136,9 +139,9 @@ export default function ProjetoDetalhePage() {
         return aFirst.localeCompare(bFirst)
       })
       setProjeto(proj)
-      // Expand all entregas by default
+      // Entregas recolhidas por padrão
       const exp: Record<number, boolean> = {}
-      proj.entregas?.forEach((e: any) => { exp[e.id] = true })
+      proj.entregas?.forEach((e: any) => { exp[e.id] = false })
       setExpanded(exp)
 
       // Carregar solicitações do projeto
@@ -220,11 +223,28 @@ export default function ProjetoDetalhePage() {
     'Gestão/Governança', 'Inovação', 'Integração'
   ]
 
+  // Guard helpers — impedir edição simultânea
+  function isAnyEditing() {
+    return editingProjeto || editingEntrega !== null || editingAtividade !== null || showNewEntregaForm
+  }
+  function getEditingLabel() {
+    if (editingProjeto) return 'o projeto'
+    if (editingEntrega !== null) return 'uma entrega'
+    if (editingAtividade !== null) return 'uma atividade'
+    if (showNewEntregaForm) return 'uma nova entrega'
+    return ''
+  }
+
   function startEditProjeto() {
+    if (editingEntrega !== null || editingAtividade !== null || showNewEntregaForm) {
+      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar o projeto.`)
+      return
+    }
     setEditForm({
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
       responsavel: projeto.responsavel || '',
       indicador_sucesso: projeto.indicador_sucesso || '',
+      dependencias_projetos: projeto.dependencias_projetos || '',
       tipo_acao: projeto.tipo_acao || [],
       setor_lider_id: projeto.setor_lider_id,
       acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || []
@@ -244,6 +264,7 @@ export default function ProjetoDetalhePage() {
         nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
         responsavel: editForm.responsavel?.trim() || null,
         indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
+        dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
         tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
         setor_lider_id: editForm.setor_lider_id,
         acoes: editForm.acoes,
@@ -257,12 +278,14 @@ export default function ProjetoDetalhePage() {
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
       responsavel: editForm.responsavel?.trim() || null,
       indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
+      dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
       tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
       setor_lider_id: editForm.setor_lider_id,
     }
     const anterior = {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
       responsavel: projeto.responsavel, indicador_sucesso: projeto.indicador_sucesso,
+      dependencias_projetos: projeto.dependencias_projetos,
       tipo_acao: projeto.tipo_acao, setor_lider_id: projeto.setor_lider_id,
     }
     const { error } = await supabase.from('projetos').update(novosDados).eq('id', projeto.id)
@@ -297,6 +320,14 @@ export default function ProjetoDetalhePage() {
 
   // Entrega edit
   function startEditEntrega(e: any) {
+    if (editingProjeto || editingAtividade !== null || showNewEntregaForm) {
+      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar esta entrega.`)
+      return
+    }
+    if (editingEntrega !== null && editingEntrega !== e.id) {
+      alert('Finalize ou cancele a edição da entrega atual antes de editar outra.')
+      return
+    }
     setEditForm({
       nome: e.nome, descricao: e.descricao, criterios_aceite: e.criterios_aceite || '',
       dependencias_criticas: e.dependencias_criticas || '',
@@ -433,18 +464,73 @@ export default function ProjetoDetalhePage() {
     loadAll()
   }
 
-  async function addNewEntrega() {
+  function addNewEntrega() {
+    if (isAnyEditing()) {
+      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de criar uma nova entrega.`)
+      return
+    }
+    setNewEntregaForm({
+      nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '',
+      data_final_prevista: '', status: 'aberta', motivo_status: '',
+      participantes: []
+    })
+    setShowNewEntregaForm(true)
+  }
+
+  async function saveNewEntrega() {
+    setSaving(true)
+    if (!newEntregaForm.nome?.trim()) { alert('Preencha o nome da entrega.'); setSaving(false); return }
+
+    // Validate participantes
+    const allParts = newEntregaForm.participantes || []
+    for (const p of allParts) {
+      if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
+        alert('Preencha o papel de todos os participantes.'); setSaving(false); return
+      }
+    }
+    const validP = allParts.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
+    const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+    if (new Set(pKeys).size !== pKeys.length) {
+      alert('Há participantes duplicados nesta entrega.'); setSaving(false); return
+    }
+
     const { data, error } = await supabase.from('entregas').insert({
-      projeto_id: projeto.id, nome: '', descricao: '', status: 'aberta'
+      projeto_id: projeto.id,
+      nome: newEntregaForm.nome.trim(),
+      descricao: newEntregaForm.descricao?.trim() || '',
+      criterios_aceite: newEntregaForm.criterios_aceite?.trim() || null,
+      dependencias_criticas: newEntregaForm.dependencias_criticas?.trim() || null,
+      data_final_prevista: newEntregaForm.data_final_prevista || null,
+      status: newEntregaForm.status,
+      motivo_status: newEntregaForm.motivo_status?.trim() || null,
     }).select().single()
-    if (error) { alert(error.message); return }
-    await auditLog('create', 'entrega', data.id, null, { nome: '', projeto_id: projeto.id })
+    if (error) { alert(error.message); setSaving(false); return }
+
+    if (validP.length > 0) {
+      const { error: insPErr } = await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
+        entrega_id: data.id,
+        setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+        tipo_participante: p.tipo_participante, papel: p.papel.trim()
+      })))
+      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); setSaving(false); return }
+    }
+
+    await auditLog('create', 'entrega', data.id, null, { nome: newEntregaForm.nome, projeto_id: projeto.id })
+    setShowNewEntregaForm(false)
+    setSaving(false)
     loadAll()
-    setTimeout(() => startEditEntrega(data), 300)
   }
 
   // Atividade edit
   function startEditAtividade(a: any, entrega: any) {
+    if (editingProjeto || editingEntrega !== null || showNewEntregaForm) {
+      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar esta atividade.`)
+      return
+    }
+    if (editingAtividade !== null && editingAtividade !== a.id) {
+      alert('Finalize ou cancele a edição da atividade atual antes de editar outra.')
+      return
+    }
     setEditForm({
       nome: a.nome, descricao: a.descricao, data_prevista: a.data_prevista || '',
       status: a.status || 'aberta', motivo_status: a.motivo_status || '',
@@ -630,6 +716,10 @@ export default function ProjetoDetalhePage() {
   }
 
   function addNewAtividade(entregaId: number) {
+    if (isAnyEditing()) {
+      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de adicionar uma atividade.`)
+      return
+    }
     const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
     setEditForm({
       nome: '', descricao: '', data_prevista: '',
@@ -640,6 +730,14 @@ export default function ProjetoDetalhePage() {
       _isNew: true, _entregaId: entregaId
     })
     setEditingAtividade(-entregaId) // Negativo para indicar nova atividade
+  }
+
+  function toggleExpandAll() {
+    const newVal = !allExpanded
+    setAllExpanded(newVal)
+    const exp: Record<number, boolean> = {}
+    projeto.entregas?.forEach((e: any) => { exp[e.id] = newVal })
+    setExpanded(exp)
   }
 
   function formatQuinzena(dateStr: string | null) {
@@ -730,10 +828,18 @@ export default function ProjetoDetalhePage() {
     <div>
       <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
       <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} />
-      <button onClick={() => router.push('/dashboard/projetos')}
-        className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
-        <ArrowLeft size={16} /> Voltar aos projetos
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => router.push('/dashboard/projetos')}
+          className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700">
+          <ArrowLeft size={16} /> Voltar aos projetos
+        </button>
+        {canCreate && (
+          <button onClick={() => router.push('/dashboard/projetos/novo')}
+            className="flex items-center gap-1.5 text-sm bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+            <Plus size={15} /> Novo projeto
+          </button>
+        )}
+      </div>
 
       {/* Header do projeto */}
       <div className={`bg-white rounded-xl border overflow-hidden mb-6 ${editingProjeto ? 'border-blue-400 ring-2 ring-blue-100 shadow-md' : 'border-gray-200'}`}>
@@ -794,6 +900,12 @@ export default function ProjetoDetalhePage() {
                   </div>
                   <textarea value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={3} placeholder="Sugestão de indicador de sucesso (opcional)" />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências com outros projetos</label>
+                  <textarea value={editForm.dependencias_projetos || ''} onChange={e => setEditForm({ ...editForm, dependencias_projetos: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={2} placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
                 </div>
               </div>
 
@@ -910,6 +1022,20 @@ export default function ProjetoDetalhePage() {
                 </div>
               )}
 
+              {projeto.dependencias_projetos && (
+                <div className="mb-5 bg-purple-50/50 rounded-xl p-4 border border-purple-100 text-sm">
+                  <h3 className="font-bold text-purple-800 flex items-center gap-1.5 mb-1.5">🔗 Dependências com outros projetos</h3>
+                  <ul className="space-y-1.5 mt-2">
+                    {projeto.dependencias_projetos.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-purple-600 font-bold mt-0.5">•</span>
+                        <span className="text-gray-700 leading-relaxed">{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 pt-5 border-t border-gray-100">
                 <div className="flex flex-col gap-3">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><ListPlus size={14} /> Ações estratégicas vinculadas</h3>
@@ -959,6 +1085,12 @@ export default function ProjetoDetalhePage() {
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold text-gray-700">Entregas</h2>
           <button type="button" onClick={() => setHelpType('entrega')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Entrega?"><HelpCircle size={16} /></button>
+          {projeto.entregas?.length > 0 && (
+            <button onClick={toggleExpandAll}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 ml-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors">
+              {allExpanded ? <><ChevronUp size={14} /> Recolher todas</> : <><ChevronDown size={14} /> Expandir todas</>}
+            </button>
+          )}
         </div>
         {canCreate && (
           <button onClick={addNewEntrega}
@@ -968,7 +1100,106 @@ export default function ProjetoDetalhePage() {
         )}
       </div>
 
-      {(!projeto.entregas || projeto.entregas.length === 0) && (
+      {/* Formulário de nova entrega (inline, no topo) */}
+      {showNewEntregaForm && (
+        <div className="mb-4 bg-white rounded-xl border-2 border-blue-400 ring-2 ring-blue-100 shadow-md overflow-hidden">
+          <div className="p-4 bg-blue-50/30">
+            <div className="space-y-3">
+              <p className="text-sm font-bold text-blue-800 mb-2">Nova entrega</p>
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome *</label>
+                <input type="text" value={newEntregaForm.nome} onChange={ev => setNewEntregaForm({ ...newEntregaForm, nome: ev.target.value })}
+                  className="input-field text-sm" placeholder="Nome da entrega" />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
+                <textarea value={newEntregaForm.descricao} onChange={ev => setNewEntregaForm({ ...newEntregaForm, descricao: ev.target.value })}
+                  className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
+                <textarea value={newEntregaForm.criterios_aceite || ''}
+                  onChange={ev => setNewEntregaForm({ ...newEntregaForm, criterios_aceite: ev.target.value })}
+                  placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[160px]">
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+                    <select value={newEntregaForm.status} onChange={ev => setNewEntregaForm({ ...newEntregaForm, status: ev.target.value })}
+                      className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                        newEntregaForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                        newEntregaForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                        newEntregaForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                        newEntregaForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                        'border-gray-300 bg-white text-gray-700'
+                      }`}>
+                      {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="w-[180px]">
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
+                    <select value={newEntregaForm.data_final_prevista}
+                      onChange={ev => setNewEntregaForm({ ...newEntregaForm, data_final_prevista: ev.target.value })}
+                      className="w-full input-field text-xs">
+                      <option value="">Sem prazo</option>
+                      {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Motivo do status</label>
+                    <input type="text" value={newEntregaForm.motivo_status} onChange={ev => setNewEntregaForm({ ...newEntregaForm, motivo_status: ev.target.value })}
+                      placeholder="Opcional" className="input-field text-xs" />
+                  </div>
+                </div>
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
+                  newEntregaForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  newEntregaForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                  newEntregaForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                  newEntregaForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                  'bg-gray-50 text-gray-500 border border-gray-100'
+                }`}>
+                  <Info size={12} className="shrink-0" />
+                  <span>{STATUS_ENTREGA[newEntregaForm.status]?.hint}</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
+                <textarea value={newEntregaForm.dependencias_criticas}
+                  onChange={ev => setNewEntregaForm({ ...newEntregaForm, dependencias_criticas: ev.target.value })}
+                  placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
+                <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-600">Participantes</span>
+                  <button type="button" onClick={() => setNewEntregaForm((prev: any) => ({
+                    ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                  }))} className="text-[11px] text-orange-500 font-medium">+ Participante</button>
+                </div>
+                {newEntregaForm.participantes?.map((p: any, i: number) =>
+                  renderEntregaParticipanteEditRow(p, i, newEntregaForm.participantes,
+                    (idx, f, v) => setNewEntregaForm((prev: any) => ({
+                      ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
+                    })),
+                    (idx) => { if (confirm('Remover participante?')) setNewEntregaForm((prev: any) => ({
+                      ...prev, participantes: prev.participantes.filter((_: any, j: number) => j !== idx)
+                    })) }
+                  )
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveNewEntrega} disabled={saving}
+                  className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
+                <button onClick={() => setShowNewEntregaForm(false)}
+                  className="flex items-center gap-1 text-xs text-gray-500 px-3 py-1.5"><X size={13} /> Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!projeto.entregas || projeto.entregas.length === 0) && !showNewEntregaForm && (
         <div className="text-center py-8 text-gray-400 text-sm">Nenhuma entrega cadastrada.</div>
       )}
 
@@ -1259,6 +1490,28 @@ export default function ProjetoDetalhePage() {
                                           <Info size={11} className="shrink-0" />
                                           <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
                                         </div>
+                                      </div>
+                                      {/* Participantes da atividade */}
+                                      <div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-medium text-gray-500">Participantes</span>
+                                          <button type="button" onClick={() => {
+                                            if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
+                                            setEditForm((prev: any) => ({
+                                              ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                                            }))
+                                          }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
+                                        </div>
+                                        {editForm.participantes?.map((p: any, i: number) =>
+                                          renderAtividadeParticipanteEditRow(p, i, editForm.participantes, editForm.entrega_participantes || [],
+                                            (idx, f, v) => setEditForm((prev: any) => ({
+                                              ...prev, participantes: prev.participantes.map((pp: any, j: number) => j === idx ? { ...pp, [f]: v } : pp)
+                                            })),
+                                            (idx) => { if (confirm('Remover participante?')) setEditForm((prev: any) => ({
+                                              ...prev, participantes: prev.participantes.filter((_: any, j: number) => j !== idx)
+                                            })) }
+                                          )
+                                        )}
                                       </div>
                                       <div className="flex gap-2 mt-4">
                                         <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}

@@ -251,7 +251,16 @@ export default function ProjetosPage() {
     })
   }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter])
 
-  // Group by setor lider, sort by proxima entrega
+  const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
+  const [viewMode, setViewMode] = useState<'normal' | 'compact'>('normal')
+
+  // Group projects by setor or status
+  const STATUS_GROUP_LABELS: Record<string, { label: string; icon: any; color: string }> = {
+    em_andamento: { label: 'Em andamento', icon: Clock, color: 'text-blue-600' },
+    concluido: { label: 'Concluídos', icon: CheckCircle2, color: 'text-emerald-600' },
+    cancelado: { label: 'Cancelados', icon: XCircle, color: 'text-gray-500' },
+  }
+
   const grouped = useMemo(() => {
     const groups: Record<string, ProjetoCard[]> = {}
     const sorted = [...filtered].sort((a, b) => {
@@ -260,13 +269,38 @@ export default function ProjetosPage() {
       if (!b.proxima_entrega) return -1
       return new Date(a.proxima_entrega.data).getTime() - new Date(b.proxima_entrega.data).getTime()
     })
-    sorted.forEach(p => {
-      const key = p.setor_lider_codigo
-      if (!groups[key]) groups[key] = []
-      groups[key].push(p)
-    })
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
-  }, [filtered])
+
+    if (groupBy === 'setor') {
+      sorted.forEach(p => {
+        const key = p.setor_lider_codigo
+        if (!groups[key]) groups[key] = []
+        groups[key].push(p)
+      })
+      return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
+    } else {
+      // Group by status
+      sorted.forEach(p => {
+        const key = p.status_projeto
+        if (!groups[key]) groups[key] = []
+        groups[key].push(p)
+      })
+      // Within em_andamento, sort by pontualidade (atrasado first)
+      if (groups['em_andamento']) {
+        groups['em_andamento'].sort((a, b) => {
+          const order: Record<string, number> = { atrasado: 0, proximo: 1, em_dia: 2 }
+          const aOrder = order[a.pontualidade] ?? 2
+          const bOrder = order[b.pontualidade] ?? 2
+          if (aOrder !== bOrder) return aOrder - bOrder
+          if (!a.proxima_entrega && !b.proxima_entrega) return 0
+          if (!a.proxima_entrega) return 1
+          if (!b.proxima_entrega) return -1
+          return new Date(a.proxima_entrega.data).getTime() - new Date(b.proxima_entrega.data).getTime()
+        })
+      }
+      const statusOrder = ['em_andamento', 'concluido', 'cancelado']
+      return statusOrder.filter(s => groups[s]).map(s => [s, groups[s]] as [string, ProjetoCard[]])
+    }
+  }, [filtered, groupBy])
 
   const [showPaineis, setShowPaineis] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -306,8 +340,8 @@ export default function ProjetosPage() {
         )}
       </div>
 
-      {/* Barra de ações: Painéis + Filtros */}
-      <div className="flex gap-2 mb-4">
+      {/* Barra de ações: Painéis + Filtros + Agrupamento + Visualização */}
+      <div className="flex flex-wrap gap-2 mb-4">
         <button onClick={() => setShowPaineis(v => !v)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showPaineis ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
           <Activity size={14} /> Painéis {showPaineis ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -316,6 +350,31 @@ export default function ProjetosPage() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showFilters || hasFilters ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
           <Filter size={14} /> Filtros {hasFilters && <span className="bg-white/30 text-[10px] px-1.5 rounded-full">ativos</span>} {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
+
+        <div className="ml-auto flex gap-1.5">
+          {/* Seletor de agrupamento */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button onClick={() => setGroupBy('setor')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${groupBy === 'setor' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              <Building2 size={13} /> Órgão
+            </button>
+            <button onClick={() => setGroupBy('status')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${groupBy === 'status' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              <Activity size={13} /> Status
+            </button>
+          </div>
+          {/* Seletor de visualização */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button onClick={() => setViewMode('normal')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${viewMode === 'normal' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Normal
+            </button>
+            <button onClick={() => setViewMode('compact')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${viewMode === 'compact' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Compacto
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Painéis consolidados */}
@@ -444,18 +503,86 @@ export default function ProjetosPage() {
         </div>
       )}
 
-      {grouped.map(([setorCodigo, projs]) => (
-        <div key={setorCodigo} className="mb-8">
-          <h2 className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3 pb-2 border-b border-gray-200">
-            <Building2 size={16} className="text-sedec-500" />
-            {setorCodigo} — {setores.find(s => s.codigo === setorCodigo)?.nome_completo || ''}
+      {grouped.map(([groupKey, projs]) => {
+        // Header content depends on groupBy mode
+        const isSetor = groupBy === 'setor'
+        const statusGroup = STATUS_GROUP_LABELS[groupKey]
+        const StatusIcon = statusGroup?.icon
+
+        // Counters for setor header (Task 9)
+        const emAndamentoCount = projs.filter(p => p.status_projeto === 'em_andamento').length
+        const concluidoCount = projs.filter(p => p.status_projeto === 'concluido').length
+        const canceladoCount = projs.filter(p => p.status_projeto === 'cancelado').length
+
+        return (
+        <div key={groupKey} className="mb-8">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3 pb-2 border-b border-gray-200 flex-wrap">
+            {isSetor ? (
+              <>
+                <Building2 size={16} className="text-sedec-500" />
+                <span>{groupKey} — {setores.find(s => s.codigo === groupKey)?.nome_completo || ''}</span>
+                <span className="text-xs font-normal text-gray-400 ml-2">{projs.length} projeto{projs.length !== 1 ? 's' : ''}</span>
+                {emAndamentoCount > 0 && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">{emAndamentoCount} em andam.</span>
+                )}
+                {concluidoCount > 0 && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">{concluidoCount} concluíd.</span>
+                )}
+                {canceladoCount > 0 && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">{canceladoCount} cancelad.</span>
+                )}
+              </>
+            ) : (
+              <>
+                {StatusIcon && <StatusIcon size={16} className={statusGroup.color} />}
+                <span className={statusGroup?.color}>{statusGroup?.label || groupKey}</span>
+                <span className="text-xs font-normal text-gray-400 ml-2">{projs.length} projeto{projs.length !== 1 ? 's' : ''}</span>
+              </>
+            )}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+
+          {/* Grid: normal ou compacto */}
+          <div className={viewMode === 'compact'
+            ? 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 items-start'
+            : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start'
+          }>
             {projs.map(p => {
               const pontKey = p.status_projeto !== 'em_andamento' ? p.status_projeto : p.pontualidade
               const pont = PONT_CONFIG[pontKey]
               const PontIcon = pont.icon
-              const highlight = setorFilter && p.setores_participantes.includes(setorFilter) && p.setor_lider_codigo !== setorFilter
+
+              if (viewMode === 'compact') {
+                return (
+                  <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
+                    className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4`}>
+                    <div className="flex items-start justify-between gap-1 mb-1">
+                      <h3 className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2 group-hover:line-clamp-none">
+                        {p.nome}
+                      </h3>
+                    </div>
+                    <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full ${pont.bg} ${pont.color}`}>
+                      <PontIcon size={9} /> {pont.label}
+                    </span>
+                    {/* Hover: detalhes expandidos */}
+                    <div className="hidden group-hover:block mt-2 pt-2 border-t border-gray-100 space-y-1">
+                      <p className="text-[10px] text-gray-500 line-clamp-3">{p.descricao}</p>
+                      {p.proxima_entrega && (
+                        <div className="flex items-start gap-1 text-[10px] text-gray-500">
+                          <Clock size={10} className="mt-0.5 shrink-0" />
+                          <span>Próx: <span className="font-medium">{p.proxima_entrega.nome}</span> — {formatQuinzena(p.proxima_entrega.data)}</span>
+                        </div>
+                      )}
+                      {p.tem_atividades_atrasadas && (
+                        <span className="flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                          <Activity size={9} /> {p.atividades_atrasadas.length} ativ. atrasada{p.atividades_atrasadas.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              }
+
+              // Normal view
               return (
                 <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
                   className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4`}>
@@ -541,7 +668,8 @@ export default function ProjetosPage() {
             })}
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

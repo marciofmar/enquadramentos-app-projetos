@@ -44,6 +44,7 @@ export default function NovoProjetoPage() {
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavel, setResponsavel] = useState('')
   const [indicadorSucesso, setIndicadorSucesso] = useState('')
+  const [dependenciasProjetos, setDependenciasProjetos] = useState('')
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -236,6 +237,7 @@ export default function NovoProjetoPage() {
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
         responsavel: responsavel.trim() || null,
         indicador_sucesso: indicadorSucesso.trim() || null,
+        dependencias_projetos: dependenciasProjetos.trim() || null,
         tipo_acao: tipoAcao.length > 0 ? tipoAcao : null,
         setor_lider_id: setorLiderId, criado_por: profile!.id
       }).select().single()
@@ -507,8 +509,15 @@ export default function NovoProjetoPage() {
                   </button>
                 </div>
                 <textarea value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed"
                   placeholder="Sugestão de indicador de sucesso (opcional)" />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Dependências com outros projetos</label>
+                <textarea value={dependenciasProjetos} onChange={e => setDependenciasProjetos(e.target.value)} rows={2}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed"
+                  placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
               </div>
             </div>
 
