@@ -15,7 +15,12 @@
       "Bash(grep -n \"ALTER TABLE projetos\\\\|ADD COLUMN.*projetos\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
       "Bash(grep -A 30 'CREATE TABLE IF NOT EXISTS \"\"public\"\".\"\"atividades\"\"' /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/20260306135625_remote_schema.sql)",
       "Bash(grep -n \"sort\\\\|order\\\\|dependencia\" /c/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)",
-      "Bash(grep -i \"dependencia\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)"
+      "Bash(grep -i \"dependencia\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
+      "Bash(grep -l \"configuracoes\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
+      "Bash(grep -A 50 \"CREATE TABLE.*configuracoes\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
+      "Bash(grep -n \"INSERT INTO configuracoes\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
+      "Bash(grep -A 20 \"CREATE TABLE.*configuracoes\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
+      "Bash(grep -n \"obs_permitir\\\\|obs_exibir\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\src\\\\app\\\\dashboard\\\\acao\"/*.tsx)"
     ]
   }
 }

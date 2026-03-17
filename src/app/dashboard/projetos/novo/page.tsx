@@ -52,6 +52,7 @@ export default function NovoProjetoPage() {
   const [tipoAcao, setTipoAcao] = useState<string[]>([])
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
+  const [configs, setConfigs] = useState<Record<string, string>>({})
 
   const router = useRouter()
   const supabase = createClient()
@@ -84,6 +85,19 @@ export default function NovoProjetoPage() {
 
       const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
       if (a) setAcoes(a)
+
+      // Carregar configurações e verificar permissão
+      const { data: cfgs } = await supabase.from('configuracoes').select('chave, valor')
+      const cfgMap: Record<string, string> = {}
+      cfgs?.forEach((c: any) => { cfgMap[c.chave] = c.valor })
+      setConfigs(cfgMap)
+
+      // Verificar se gestor tem permissão de cadastro
+      if (p && p.role === 'gestor' && cfgMap['proj_permitir_cadastro'] === 'false') {
+        alert('O cadastro de projetos está desabilitado no momento.')
+        router.push('/dashboard/projetos')
+        return
+      }
 
       setLoading(false)
     }

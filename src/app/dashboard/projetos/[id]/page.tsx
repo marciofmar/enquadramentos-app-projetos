@@ -152,11 +152,21 @@ export default function ProjetoDetalhePage() {
     setLoading(false)
   }
 
-  // Permission checks — admin, master e gestor do setor líder podem editar
+  // Permission checks — granulares por tipo de entidade
   const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
   const isGestorDoSetor = profile?.role === 'gestor' && profile.setor_id === projeto?.setor_lider_id
-  const canEdit = isAdminOrMaster || isGestorDoSetor
-  const canCreate = canEdit
+
+  // Projetos e Entregas
+  const canCreateProjeto = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro'] !== 'false')
+  const canEditProjeto = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao'] !== 'false')
+
+  // Atividades
+  const canCreateAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro_atividades'] !== 'false')
+  const canEditAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_atividades'] !== 'false')
+
+  // Datas (independentes da edição geral)
+  const canEditDataEntrega = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_datas'] !== 'false')
+  const canEditDataAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_datas_atividades'] !== 'false')
 
   // Pontualidade
   const pontualidade = useMemo(() => {
@@ -833,7 +843,7 @@ export default function ProjetoDetalhePage() {
           className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700">
           <ArrowLeft size={16} /> Voltar aos projetos
         </button>
-        {canCreate && (
+        {canCreateProjeto && (
           <button onClick={() => router.push('/dashboard/projetos/novo')}
             className="flex items-center gap-1.5 text-sm bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
             <Plus size={15} /> Novo projeto
@@ -973,10 +983,10 @@ export default function ProjetoDetalhePage() {
                 {hasPendingSolicitacao('projeto', projeto.id) && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando aprovação</span>
                 )}
-                {canEdit && (
+                {canEditProjeto && (
                   <div className="flex gap-2 shrink-0">
                     <button onClick={startEditProjeto} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors font-medium" title="Editar"><Edit3 size={15} /> Editar</button>
-                    {(profile?.role === 'master' || profile?.setor_id === projeto.setor_lider_id) && (
+                    {(isAdminOrMaster || canEditProjeto) && (
                       <button onClick={deleteProject} className="flex items-center gap-1 text-sm bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium" title="Excluir"><Trash2 size={15} /> Excluir</button>
                     )}
                   </div>
@@ -1092,7 +1102,7 @@ export default function ProjetoDetalhePage() {
             </button>
           )}
         </div>
-        {canCreate && (
+        {canCreateProjeto && (
           <button onClick={addNewEntrega}
             className="flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700 font-medium">
             <PackagePlus size={16} /> Nova entrega
@@ -1235,11 +1245,11 @@ export default function ProjetoDetalhePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {canEdit && (
+                  {(canEditProjeto || canEditDataEntrega) && (
                     <>
                       <button onClick={(ev) => { ev.stopPropagation(); isEditing ? setEditingEntrega(null) : startEditEntrega(e) }}
                         className="text-gray-400 hover:text-orange-500"><Edit3 size={15} /></button>
-                      {canEdit && <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
+                      {canEditProjeto && <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
                         className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>}
                     </>
                   )}
@@ -1256,18 +1266,18 @@ export default function ProjetoDetalhePage() {
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome</label>
                         <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                          className="input-field text-sm" placeholder="Nome da entrega" />
+                          disabled={!canEditProjeto} className="input-field text-sm" placeholder="Nome da entrega" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
                         <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                          className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+                          disabled={!canEditProjeto} className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
                         <textarea value={editForm.criterios_aceite || ''}
                           onChange={ev => setEditForm({ ...editForm, criterios_aceite: ev.target.value })}
-                          placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
+                          disabled={!canEditProjeto} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
                       </div>
 
                       <div className="space-y-1.5">
@@ -1276,6 +1286,7 @@ export default function ProjetoDetalhePage() {
                           <div className="min-w-[160px]">
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
                             <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                              disabled={!canEditProjeto}
                               className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
                                 editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
                                 editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
@@ -1292,6 +1303,7 @@ export default function ProjetoDetalhePage() {
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
                             <select value={editForm.data_final_prevista}
                               onChange={ev => setEditForm({ ...editForm, data_final_prevista: ev.target.value })}
+                              disabled={!canEditDataEntrega}
                               className="w-full input-field text-xs">
                               <option value="">Sem prazo</option>
                               {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
@@ -1302,7 +1314,7 @@ export default function ProjetoDetalhePage() {
                           <div className="flex-1 min-w-[180px]">
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Motivo do status</label>
                             <input type="text" value={editForm.motivo_status} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                              placeholder="Opcional" className="input-field text-xs" />
+                              disabled={!canEditProjeto} placeholder="Opcional" className="input-field text-xs" />
                           </div>
                         </div>
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
@@ -1320,11 +1332,12 @@ export default function ProjetoDetalhePage() {
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
                         <textarea value={editForm.dependencias_criticas}
                           onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                          placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
+                          disabled={!canEditProjeto} placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
                         <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                       </div>
 
                       {/* Participantes */}
+                      {canEditProjeto && (
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-gray-600">Participantes</span>
@@ -1343,6 +1356,7 @@ export default function ProjetoDetalhePage() {
                           )
                         )}
                       </div>
+                      )}
 
                       <div className="flex gap-2">
                         <button onClick={() => saveEditEntrega(e.id)} disabled={saving}
@@ -1409,7 +1423,7 @@ export default function ProjetoDetalhePage() {
                             </h4>
                             <button type="button" onClick={() => setHelpType('atividade')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Atividade?"><HelpCircle size={14} /></button>
                           </div>
-                          {canCreate && (
+                          {canCreateAtividade && (
                             <button onClick={() => addNewAtividade(e.id)}
                               className="text-xs bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300 px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 transition-all shadow-sm">
                               <Plus size={14} /> Adicionar
@@ -1435,12 +1449,12 @@ export default function ProjetoDetalhePage() {
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Nome</label>
                                         <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                                          className="input-field text-xs" placeholder="Nome da atividade" />
+                                          disabled={!canEditAtividade} className="input-field text-xs" placeholder="Nome da atividade" />
                                       </div>
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Descrição</label>
                                         <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                                          className="input-field text-xs" placeholder="Descreva esta atividade" />
+                                          disabled={!canEditAtividade} className="input-field text-xs" placeholder="Descreva esta atividade" />
                                       </div>
 
                                       <div className="space-y-1.5">
@@ -1448,6 +1462,7 @@ export default function ProjetoDetalhePage() {
                                           <div className="w-[140px]">
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
                                             <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
+                                              disabled={!canEditAtividade}
                                               className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
                                                 editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
                                                 editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
@@ -1463,6 +1478,7 @@ export default function ProjetoDetalhePage() {
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
                                             <input type="date" value={editForm.data_prevista || ''}
                                               max={editForm.entrega_data_final || undefined}
+                                              disabled={!canEditDataAtividade}
                                               onChange={ev => {
                                                 const nd = ev.target.value
                                                 if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
@@ -1477,7 +1493,7 @@ export default function ProjetoDetalhePage() {
                                           <div className="flex-1 min-w-[140px]">
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
                                             <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                                              placeholder="Opcional" className="input-field text-xs" />
+                                              disabled={!canEditAtividade} placeholder="Opcional" className="input-field text-xs" />
                                           </div>
                                         </div>
                                         <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
@@ -1492,6 +1508,7 @@ export default function ProjetoDetalhePage() {
                                         </div>
                                       </div>
                                       {/* Participantes da atividade */}
+                                      {canEditAtividade && (
                                       <div>
                                         <div className="flex items-center justify-between">
                                           <span className="text-[10px] font-medium text-gray-500">Participantes</span>
@@ -1513,6 +1530,7 @@ export default function ProjetoDetalhePage() {
                                           )
                                         )}
                                       </div>
+                                      )}
                                       <div className="flex gap-2 mt-4">
                                         <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}
                                           className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
@@ -1528,8 +1546,8 @@ export default function ProjetoDetalhePage() {
                                           <h4 className="text-sm font-semibold text-gray-800">{a.nome}</h4>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
-                                          {canEdit && <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500 transition-colors p-1"><Edit3 size={14} /></button>}
-                                          {canEdit && <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14} /></button>}
+                                          {(canEditAtividade || canEditDataAtividade) && <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500 transition-colors p-1"><Edit3 size={14} /></button>}
+                                          {canEditAtividade && <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14} /></button>}
                                         </div>
                                       </div>
                                       <p className="text-xs text-gray-600 mb-3 pl-7">{a.descricao}</p>
