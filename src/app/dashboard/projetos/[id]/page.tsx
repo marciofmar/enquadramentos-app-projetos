@@ -113,7 +113,7 @@ export default function ProjetoDetalhePage() {
     const { data: proj } = await supabase.from('projetos')
       .select(`*, setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
-        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status,
+        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
           atividades(id, nome, descricao, data_prevista, status, motivo_status,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
@@ -342,6 +342,8 @@ export default function ProjetoDetalhePage() {
       nome: e.nome, descricao: e.descricao, criterios_aceite: e.criterios_aceite || '',
       dependencias_criticas: e.dependencias_criticas || '',
       data_final_prevista: e.data_final_prevista || '', status: e.status, motivo_status: e.motivo_status || '',
+      orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
+      responsavel_entrega: e.responsavel_entrega || '',
       participantes: e.entrega_participantes?.map((p: any) => ({
         id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
       })) || []
@@ -416,6 +418,8 @@ export default function ProjetoDetalhePage() {
         dependencias_criticas: editForm.dependencias_criticas || null,
         data_final_prevista: editForm.data_final_prevista || null,
         status: editForm.status, motivo_status: editForm.motivo_status || null,
+        orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
+        responsavel_entrega: editForm.responsavel_entrega?.trim() || null,
         participantes: validP.map((p: any) => ({
           setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
           tipo_participante: p.tipo_participante, papel: p.papel.trim()
@@ -432,12 +436,16 @@ export default function ProjetoDetalhePage() {
       dependencias_criticas: editForm.dependencias_criticas || null,
       data_final_prevista: editForm.data_final_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
+      orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
+      responsavel_entrega: editForm.responsavel_entrega?.trim() || null,
     }
     const anteriorE = {
       nome: entrega?.nome, descricao: entrega?.descricao,
       criterios_aceite: entrega?.criterios_aceite, dependencias_criticas: entrega?.dependencias_criticas,
       data_final_prevista: entrega?.data_final_prevista,
       status: entrega?.status, motivo_status: entrega?.motivo_status,
+      orgao_responsavel_setor_id: entrega?.orgao_responsavel_setor_id,
+      responsavel_entrega: entrega?.responsavel_entrega,
     }
     const { error } = await supabase.from('entregas').update(novosDadosE).eq('id', entregaId)
     if (error) { alert(error.message); setSaving(false); return }
@@ -482,6 +490,7 @@ export default function ProjetoDetalhePage() {
     setNewEntregaForm({
       nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '',
       data_final_prevista: '', status: 'aberta', motivo_status: '',
+      orgao_responsavel_setor_id: null, responsavel_entrega: '',
       participantes: []
     })
     setShowNewEntregaForm(true)
@@ -513,6 +522,8 @@ export default function ProjetoDetalhePage() {
       data_final_prevista: newEntregaForm.data_final_prevista || null,
       status: newEntregaForm.status,
       motivo_status: newEntregaForm.motivo_status?.trim() || null,
+      orgao_responsavel_setor_id: newEntregaForm.orgao_responsavel_setor_id || null,
+      responsavel_entrega: newEntregaForm.responsavel_entrega?.trim() || null,
     }).select().single()
     if (error) { alert(error.message); setSaving(false); return }
 
@@ -1132,6 +1143,35 @@ export default function ProjetoDetalhePage() {
                   onChange={ev => setNewEntregaForm({ ...newEntregaForm, criterios_aceite: ev.target.value })}
                   placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
               </div>
+
+              {/* Órgão responsável + Responsável */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
+                  <select
+                    value={newEntregaForm.orgao_responsavel_setor_id || ''}
+                    onChange={ev => setNewEntregaForm({ ...newEntregaForm, orgao_responsavel_setor_id: ev.target.value ? parseInt(ev.target.value) : null })}
+                    className="input-field text-xs">
+                    <option value="">Selecione...</option>
+                    {(newEntregaForm.participantes || [])
+                      .filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim())
+                      .map((p: any) => {
+                        const s = setores.find((ss: any) => ss.id === p.setor_id)
+                        return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
+                      })}
+                  </select>
+                  {(newEntregaForm.participantes || []).filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim()).length === 0 && (
+                    <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
+                  <input type="text" value={newEntregaForm.responsavel_entrega || ''}
+                    onChange={ev => setNewEntregaForm({ ...newEntregaForm, responsavel_entrega: ev.target.value })}
+                    placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="min-w-[160px]">
@@ -1280,6 +1320,36 @@ export default function ProjetoDetalhePage() {
                           disabled={!canEditProjeto} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
                       </div>
 
+                      {/* Órgão responsável + Responsável */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
+                          <select
+                            value={editForm.orgao_responsavel_setor_id || ''}
+                            onChange={ev => setEditForm({ ...editForm, orgao_responsavel_setor_id: ev.target.value ? parseInt(ev.target.value) : null })}
+                            disabled={!canEditProjeto}
+                            className="input-field text-xs">
+                            <option value="">Selecione...</option>
+                            {(editForm.participantes || [])
+                              .filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim())
+                              .map((p: any) => {
+                                const s = setores.find((ss: any) => ss.id === p.setor_id)
+                                return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
+                              })}
+                          </select>
+                          {(editForm.participantes || []).filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim()).length === 0 && (
+                            <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
+                          <input type="text" value={editForm.responsavel_entrega || ''}
+                            onChange={ev => setEditForm({ ...editForm, responsavel_entrega: ev.target.value })}
+                            disabled={!canEditProjeto}
+                            placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                        </div>
+                      </div>
+
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-end gap-3">
                           {/* Status — destaque visual */}
@@ -1398,6 +1468,27 @@ export default function ProjetoDetalhePage() {
                       )}
                       {e.motivo_status && (
                         <p className="text-xs text-gray-600 mb-2"><span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Motivo do status:</span> {e.motivo_status}</p>
+                      )}
+
+                      {/* Órgão responsável + Responsável */}
+                      {(e.orgao_responsavel_setor_id || e.responsavel_entrega) && (
+                        <div className="flex flex-wrap gap-4 mb-3 text-xs">
+                          {e.orgao_responsavel_setor_id && (() => {
+                            const p = e.entrega_participantes?.find((pp: any) => pp.tipo_participante === 'setor' && pp.setor_id === e.orgao_responsavel_setor_id)
+                            return (
+                              <div>
+                                <span className="font-semibold text-gray-700">Órgão responsável: </span>
+                                <span className="text-gray-600">{p?.setor?.codigo ? `${p.setor.codigo} — ${p.setor.nome_completo}` : setores.find((s: any) => s.id === e.orgao_responsavel_setor_id)?.codigo || 'Setor'}</span>
+                              </div>
+                            )
+                          })()}
+                          {e.responsavel_entrega && (
+                            <div>
+                              <span className="font-semibold text-gray-700">Responsável: </span>
+                              <span className="text-gray-600">{e.responsavel_entrega}</span>
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Participantes */}

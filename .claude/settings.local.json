@@ -20,7 +20,13 @@
       "Bash(grep -A 50 \"CREATE TABLE.*configuracoes\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
       "Bash(grep -n \"INSERT INTO configuracoes\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
       "Bash(grep -A 20 \"CREATE TABLE.*configuracoes\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
-      "Bash(grep -n \"obs_permitir\\\\|obs_exibir\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\src\\\\app\\\\dashboard\\\\acao\"/*.tsx)"
+      "Bash(grep -n \"obs_permitir\\\\|obs_exibir\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\src\\\\app\\\\dashboard\\\\acao\"/*.tsx)",
+      "Bash(npx supabase --version)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT column_name FROM information_schema.columns WHERE table_name=''projetos'' AND column_name=''dependencias_projetos'';\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/20260316120000_dependencias_projetos.sql)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/20260317120000_orgao_responsavel_entrega.sql)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"NOTIFY pgrst, ''reload schema'';\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT column_name FROM information_schema.columns WHERE table_name=''projetos'' AND column_name=''dependencias_projetos'' UNION ALL SELECT column_name FROM information_schema.columns WHERE table_name=''entregas'' AND column_name IN \\(''orgao_responsavel_setor_id'', ''responsavel_entrega''\\);\")"
     ]
   }
 }

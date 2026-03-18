@@ -113,6 +113,8 @@ export interface Entrega {
   data_final_prevista: string | null
   status: 'aberta' | 'em_andamento' | 'aguardando' | 'resolvida' | 'cancelada'
   motivo_status: string | null
+  orgao_responsavel_setor_id: number | null
+  responsavel_entrega: string | null
 }
 
 export interface Atividade {

@@ -9,10 +9,12 @@ import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
-interface Atividade { nome: string; descricao: string; data_prevista: string; participantes: Participante[] }
+interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; participantes: Participante[] }
 interface Entrega {
   nome: string; descricao: string; criterios_aceite: string; dependencias_criticas: string
-  quinzena: string; participantes: Participante[]; atividades: Atividade[]
+  quinzena: string; status: string; motivo_status: string
+  orgao_responsavel_setor_id: number | null; responsavel_entrega: string
+  participantes: Participante[]; atividades: Atividade[]
 }
 
 const QUINZENAS = (() => {
@@ -29,6 +31,14 @@ const QUINZENAS = (() => {
   }
   return opts
 })()
+
+const STATUS_ENTREGA: Record<string, { label: string; color: string; bg: string; hint: string }> = {
+  aberta: { label: 'Aberta', color: 'text-gray-600', bg: 'bg-gray-100', hint: 'Ainda não iniciado' },
+  em_andamento: { label: 'Em andamento', color: 'text-blue-700', bg: 'bg-blue-100', hint: 'Trabalho em andamento' },
+  aguardando: { label: 'Aguardando', color: 'text-yellow-700', bg: 'bg-yellow-100', hint: 'Parado — depende de retorno de outro órgão' },
+  resolvida: { label: 'Resolvida', color: 'text-green-700', bg: 'bg-green-100', hint: 'Finalizado' },
+  cancelada: { label: 'Cancelada', color: 'text-red-700', bg: 'bg-red-100', hint: 'Não é mais necessário' },
+}
 
 export default function NovoProjetoPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -116,6 +126,8 @@ export default function NovoProjetoPage() {
   function addEntrega() {
     setEntregas([...entregas, {
       nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '', quinzena: '',
+      status: 'aberta', motivo_status: '',
+      orgao_responsavel_setor_id: null, responsavel_entrega: '',
       participantes: [{ setor_id: null, tipo_participante: 'setor', papel: '' }],
       atividades: []
     }])
@@ -149,7 +161,7 @@ export default function NovoProjetoPage() {
 
   function addAtividade(entregaIdx: number) {
     setEntregas(prev => prev.map((e, i) => i === entregaIdx ? {
-      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', participantes: [] }]
+      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', status: 'aberta', motivo_status: '', participantes: [] }]
     } : e))
   }
 
@@ -272,6 +284,10 @@ export default function NovoProjetoPage() {
           criterios_aceite: e.criterios_aceite.trim(),
           dependencias_criticas: e.dependencias_criticas.trim() || null,
           data_final_prevista: e.quinzena || null,
+          status: e.status,
+          motivo_status: e.motivo_status.trim() || null,
+          orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
+          responsavel_entrega: e.responsavel_entrega.trim() || null,
         }).select().single()
         if (entErr) throw entErr
 
@@ -295,7 +311,9 @@ export default function NovoProjetoPage() {
         for (const a of e.atividades) {
           const { data: ativ, error: ativErr } = await supabase.from('atividades').insert({
             entrega_id: ent.id, nome: a.nome.trim(), descricao: a.descricao.trim(),
-            data_prevista: a.data_prevista || null
+            data_prevista: a.data_prevista || null,
+            status: a.status,
+            motivo_status: a.motivo_status.trim() || null,
           }).select().single()
           if (ativErr) throw ativErr
 
@@ -421,6 +439,10 @@ export default function NovoProjetoPage() {
       const nomes = ativComEsseSetor.map(a => `"${a.nome}"`).join(', ')
       alert(`Não é possível remover este participante. Ele está incluído nas atividades: ${nomes}. Remova-o das atividades primeiro.`)
       return
+    }
+    // Limpar órgão responsável se era este participante
+    if (removendo.tipo_participante === 'setor' && removendo.setor_id === entrega.orgao_responsavel_setor_id) {
+      updateEntrega(eIdx, 'orgao_responsavel_setor_id', null)
     }
     removeParticipanteEntrega(eIdx, pIdx)
   }
@@ -594,8 +616,10 @@ export default function NovoProjetoPage() {
               <div key={eIdx} className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
                 <div className="flex items-start justify-between mb-3">
                   <span className="text-sm font-semibold text-gray-600">Entrega {eIdx + 1}</span>
-                  <button type="button" onClick={() => removeEntrega(eIdx)} className="text-red-400 hover:text-red-600">
-                    <Trash2 size={15} />
+                  <button type="button" onClick={() => removeEntrega(eIdx)}
+                    className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                    title="Remover esta entrega">
+                    <Trash2 size={14} /> Remover
                   </button>
                 </div>
 
@@ -628,20 +652,82 @@ export default function NovoProjetoPage() {
                     </div>
                   </div>
 
+                  {/* Órgão responsável + Responsável */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500">Órgão responsável</label>
+                      <select
+                        value={e.orgao_responsavel_setor_id || ''}
+                        onChange={ev => updateEntrega(eIdx, 'orgao_responsavel_setor_id', ev.target.value ? parseInt(ev.target.value) : null)}
+                        className="input-field text-xs">
+                        <option value="">Selecione...</option>
+                        {e.participantes
+                          .filter(p => p.tipo_participante === 'setor' && p.setor_id && p.papel.trim())
+                          .map(p => {
+                            const s = setores.find(ss => ss.id === p.setor_id)
+                            return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
+                          })}
+                      </select>
+                      {e.participantes.filter(p => p.tipo_participante === 'setor' && p.setor_id && p.papel.trim()).length === 0 && (
+                        <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500">Responsável pela entrega</label>
+                      <input type="text" value={e.responsavel_entrega}
+                        onChange={ev => updateEntrega(eIdx, 'responsavel_entrega', ev.target.value)}
+                        placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                    </div>
+                  </div>
+
+                  {/* Status + Quinzena + Motivo */}
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="min-w-[160px]">
+                        <label className="text-xs font-medium text-gray-500">Status</label>
+                        <select value={e.status} onChange={ev => updateEntrega(eIdx, 'status', ev.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                            e.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                            e.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                            e.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                            e.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                            'border-gray-300 bg-white text-gray-700'
+                          }`}>
+                          {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-[180px]">
+                        <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>
+                        <select value={e.quinzena} onChange={ev => handleQuinzenaChange(eIdx, ev.target.value)}
+                          className="w-full input-field text-xs">
+                          <option value="">Sem prazo definido</option>
+                          {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex-1 min-w-[180px]">
+                        <label className="text-xs font-medium text-gray-500">Motivo do status</label>
+                        <input type="text" value={e.motivo_status} onChange={ev => updateEntrega(eIdx, 'motivo_status', ev.target.value)}
+                          placeholder="Opcional" className="input-field text-xs" />
+                      </div>
+                    </div>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
+                      e.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                      e.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                      e.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                      e.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                      'bg-gray-50 text-gray-500 border border-gray-100'
+                    }`}>
+                      <Info size={12} className="shrink-0" />
+                      <span>{STATUS_ENTREGA[e.status]?.hint}</span>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-xs font-medium text-gray-500">Dependências críticas</label>
                     <textarea value={e.dependencias_criticas}
                       onChange={ev => updateEntrega(eIdx, 'dependencias_criticas', ev.target.value)}
                       placeholder="ex: custos específicos, tempo de licitação, dependência de ação de algum setor..." className="input-field text-xs resize-none" rows={2} />
                     <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
-                  </div>
-                  <div className="w-48">
-                    <label className="text-xs font-medium text-gray-500">Quinzena de entrega</label>
-                    <select value={e.quinzena} onChange={ev => handleQuinzenaChange(eIdx, ev.target.value)}
-                      className="input-field text-xs">
-                      <option value="">Sem prazo definido</option>
-                      {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
-                    </select>
                   </div>
 
                   {/* Atividades */}
@@ -679,21 +765,52 @@ export default function NovoProjetoPage() {
                           <textarea value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
                             placeholder="Descrição da atividade *" className="input-field text-xs resize-none" rows={2} />
 
-                          {/* Data prevista da atividade */}
-                          <div className="w-40">
-                            <label className="text-[10px] font-medium text-gray-500">Data prevista (opcional)</label>
-                            <input type="date" value={a.data_prevista}
-                              max={e.quinzena || undefined}
-                              onChange={ev => {
-                                const newDate = ev.target.value
-                                if (newDate && e.quinzena && newDate > e.quinzena) {
-                                  alert(`A data não pode ser posterior à quinzena da entrega (${e.quinzena}).`)
-                                  return
+                          {/* Status + Data prevista + Motivo */}
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-end gap-2">
+                              <div className="w-[140px]">
+                                <label className="text-[10px] font-medium text-gray-500">Status</label>
+                                <select value={a.status} onChange={ev => updateAtividade(eIdx, aIdx, 'status', ev.target.value)}
+                                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
+                                    a.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                    a.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                    a.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                    a.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                    'border-gray-300 bg-white text-gray-700'
+                                  }`}>
+                                  {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                </select>
+                              </div>
+                              <div className="w-[140px]">
+                                <label className="text-[10px] font-medium text-gray-500">Data prevista</label>
+                                <input type="date" value={a.data_prevista}
+                                  max={e.quinzena || undefined}
+                                  onChange={ev => {
+                                    const newDate = ev.target.value
+                                    if (newDate && e.quinzena && newDate > e.quinzena) {
+                                      alert(`A data não pode ser posterior à quinzena da entrega (${e.quinzena}).`)
+                                      return
                                 }
-                                updateAtividade(eIdx, aIdx, 'data_prevista', newDate)
-                              }}
-                              className="input-field text-xs" />
-                            {e.quinzena && <span className="text-[9px] text-gray-400">Limite: {e.quinzena}</span>}
+                                    updateAtividade(eIdx, aIdx, 'data_prevista', newDate)
+                                  }}
+                                  className="w-full input-field text-xs" />
+                              </div>
+                              <div className="flex-1 min-w-[140px]">
+                                <label className="text-[10px] font-medium text-gray-500">Motivo</label>
+                                <input type="text" value={a.motivo_status} onChange={ev => updateAtividade(eIdx, aIdx, 'motivo_status', ev.target.value)}
+                                  placeholder="Opcional" className="input-field text-xs" />
+                              </div>
+                            </div>
+                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
+                              a.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                              a.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                              a.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                              a.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                              'bg-gray-50 text-gray-500 border border-gray-100'
+                            }`}>
+                              <Info size={11} className="shrink-0" />
+                              <span>{STATUS_ENTREGA[a.status]?.hint}</span>
+                            </div>
                           </div>
 
                           {/* Participantes da atividade (apenas setores da entrega) */}
