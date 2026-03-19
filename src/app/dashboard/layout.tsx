@@ -79,8 +79,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button onClick={() => router.push('/dashboard')} className="flex items-center gap-3 hover:opacity-90">
               <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-10" />
               <div className="hidden sm:block border-l border-gray-600 pl-3">
-                <span className="font-bold text-sm block leading-tight">Planejamento Estratégico</span>
-                <span className="text-[11px] text-gray-400">SEDEC-RJ 2024–2035 • ICTDEC</span>
+                <span className="font-bold text-sm block leading-tight tracking-wide">SIGPLAN</span>
+                <span className="text-[11px] text-gray-400">Governança e Planejamento • SEDEC-RJ</span>
               </div>
             </button>
 
@@ -167,9 +167,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-6 opacity-60" />
-            <span className="text-xs text-gray-400">Secretaria de Estado de Defesa Civil — Governo do Estado do Rio de Janeiro</span>
+            <span className="text-xs text-gray-400">SIGPLAN — Secretaria de Estado de Defesa Civil do Rio de Janeiro</span>
           </div>
-          <span className="text-xs text-gray-300">ICTDEC / DAEAD</span>
+          <span className="text-xs text-gray-300">Desenvolvido por ICTDEC</span>
         </div>
       </footer>
     </div>

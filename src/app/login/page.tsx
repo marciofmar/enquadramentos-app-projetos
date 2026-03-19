@@ -153,9 +153,13 @@ export default function LoginPage() {
 
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-14 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-white">Enquadramentos Estratégicos</h1>
-          <p className="text-gray-400 mt-1 text-sm">Plano Estratégico 2024–2035 • ICTDEC / DAEAD</p>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-14" />
+            <div className="w-px h-10 bg-gray-600" />
+            <img src="/logo-sigplan.svg" alt="SIGPLAN" className="h-12" />
+          </div>
+          <h1 className="text-xl font-bold text-white">Sistema de Governança e Planejamento</h1>
+          <p className="text-gray-400 mt-1 text-sm">SEDEC/RJ • Plano Estratégico 2024–2035</p>
         </div>
 
         {showForgot ? (

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 56" fill="none">
+  <!-- Shield / governance icon -->
+  <g transform="translate(4, 4)">
+    <!-- Shield outline -->
+    <path d="M24 2L4 10V24C4 36.4 12.4 47.6 24 50C35.6 47.6 44 36.4 44 24V10L24 2Z"
+          fill="#E97724" opacity="0.15" stroke="#E97724" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Inner gear/planning symbol -->
+    <circle cx="24" cy="22" r="8" stroke="#E97724" stroke-width="2" fill="none"/>
+    <line x1="24" y1="12" x2="24" y2="16" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="24" y1="28" x2="24" y2="32" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="14" y1="22" x2="18" y2="22" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="30" y1="22" x2="34" y2="22" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <!-- Diagonal gear teeth -->
+    <line x1="17" y1="15" x2="19.8" y2="17.8" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="28.2" y1="26.2" x2="31" y2="29" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="31" y1="15" x2="28.2" y2="17.8" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <line x1="19.8" y1="26.2" x2="17" y2="29" stroke="#E97724" stroke-width="2" stroke-linecap="round"/>
+    <!-- Center dot -->
+    <circle cx="24" cy="22" r="2.5" fill="#E97724"/>
+    <!-- Check mark at bottom of shield -->
+    <path d="M19 38L22.5 41.5L29 35" stroke="#E97724" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- SIGPLAN text -->
+  <text x="60" y="24" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" font-weight="800" fill="#E97724" letter-spacing="2">SIGPLAN</text>
+  <!-- Subtle underline accent -->
+  <rect x="60" y="30" width="132" height="2" rx="1" fill="#E97724" opacity="0.3"/>
+  <!-- Subtitle -->
+  <text x="60" y="46" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9" fill="#9CA3AF" letter-spacing="0.5">GOVERNAN&#199;A E PLANEJAMENTO</text>
+</svg>

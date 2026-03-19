@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Enquadramentos Estratégicos | SEDEC-RJ',
-  description: 'Sistema de Enquadramentos Estratégicos Setoriais — SEDEC-RJ / ICTDEC',
+  title: 'SIGPLAN | SEDEC-RJ',
+  description: 'Sistema de Governança e Planejamento — Secretaria de Estado de Defesa Civil do Rio de Janeiro',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
