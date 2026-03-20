@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase-server'
-import { createAdminClient } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
   try {
-    // Autenticação via cookies
+    // Autenticação via cookies (session do usuário)
     const serverSupabase = createServerSupabase()
     const { data: { user } } = await serverSupabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-    // Verificar que o caller tem permissão (gestor, master ou admin)
-    const adminClient = createAdminClient()
-    const { data: callerProfile } = await adminClient
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (!callerProfile || !['admin', 'master', 'gestor'].includes(callerProfile.role)) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-    }
 
     const { nome, email, setor_id } = await request.json()
 
@@ -34,6 +25,7 @@ export async function POST(request: NextRequest) {
     const tempPassword = crypto.randomUUID()
 
     // Criar usuário via função SECURITY DEFINER (contorna bug HS256 do GoTrue)
+    // A função já verifica que o caller é gestor, master ou admin via auth.uid()
     const { data: newUserId, error: createError } = await serverSupabase.rpc('admin_create_user', {
       p_email: email.trim().toLowerCase(),
       p_password: tempPassword,
