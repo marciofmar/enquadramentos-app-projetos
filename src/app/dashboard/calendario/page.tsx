@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink, Edit3, Save } from 'lucide-react'
 import type { Profile } from '@/lib/types'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 
 interface CalendarItem {
   id: number
@@ -27,6 +28,7 @@ interface CalendarItem {
   entrega_id: number | null // para atividades: ID da entrega pai
   entrega_data_final: string | null // para atividades: data limite da entrega
   atividades_datas: { nome: string; data: string }[] // para entregas: datas das atividades filhas
+  responsavel_id: string | null // responsável pela entrega ou atividade
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -126,12 +128,14 @@ export default function CalendarioPage() {
   const [acaoFilter, setAcaoFilter] = useState('')
   const [setorFilter, setSetorFilter] = useState('')
   const [projetoFilter, setProjetoFilter] = useState('')
+  const [responsavelFilter, setResponsavelFilter] = useState('')
   const [selectedItem, setSelectedItem] = useState<CalendarItem | null>(null)
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
   const [acoes, setAcoes] = useState<{ numero: string; nome: string; oe_codigo: string }[]>([])
   const [setores, setSetores] = useState<{ id: number; codigo: string; nome_completo: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string }[]>([])
 
   // Auth, configs, solicitações
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -167,9 +171,9 @@ export default function CalendarioPage() {
       supabase.from('projetos')
         .select(`id, nome, setor_lider_id, setor_lider:setor_lider_id(codigo, nome_completo),
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-          entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas,
+          entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas, responsavel_entrega_id,
             entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
-            atividades(id, nome, data_prevista, status, motivo_status,
+            atividades(id, nome, data_prevista, status, motivo_status, responsavel_atividade_id,
               atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
           )`)
         .order('nome'),
@@ -183,6 +187,11 @@ export default function CalendarioPage() {
     })))
     if (setoresRes.data) setSetores(setoresRes.data)
     if (cfgsRes.data) { const m: Record<string, string> = {}; cfgsRes.data.forEach((c: any) => { m[c.chave] = c.valor }); setConfigs(m) }
+
+    // Load eligible users for responsavel filter
+    const { data: usersData } = await supabase.from('profiles')
+      .select('id, nome').in('role', ['gestor', 'master', 'admin']).eq('ativo', true).order('nome')
+    if (usersData) setEligibleUsers(usersData)
     if (solsRes.data) setSolicitacoes(solsRes.data)
 
     if (projRes.data) {
@@ -230,6 +239,7 @@ export default function CalendarioPage() {
               entrega_id: null,
               entrega_data_final: null,
               atividades_datas: ativDatas,
+              responsavel_id: e.responsavel_entrega_id || null,
             })
           }
 
@@ -262,6 +272,7 @@ export default function CalendarioPage() {
                 entrega_id: e.id,
                 entrega_data_final: e.data_final_prevista || null,
                 atividades_datas: [],
+                responsavel_id: a.responsavel_atividade_id || null,
               })
             }
           })
@@ -304,9 +315,10 @@ export default function CalendarioPage() {
       if (acaoFilter && !item.acoes.some(a => a.numero === acaoFilter)) return false
       if (setorFilter && !item.setores.includes(setorFilter)) return false
       if (projetoFilter && item.projeto_id !== Number(projetoFilter)) return false
+      if (responsavelFilter && item.responsavel_id !== responsavelFilter) return false
       return true
     })
-  }, [items, oeFilter, acaoFilter, setorFilter, projetoFilter])
+  }, [items, oeFilter, acaoFilter, setorFilter, projetoFilter, responsavelFilter])
 
   // Group by date
   const itemsByDate = useMemo(() => {
@@ -341,7 +353,7 @@ export default function CalendarioPage() {
     }
   }, [viewMode, currentYear, currentMonth, currentWeekStart, itemsByDate])
 
-  const hasFilters = !!(oeFilter || acaoFilter || setorFilter || projetoFilter)
+  const hasFilters = !!(oeFilter || acaoFilter || setorFilter || projetoFilter || responsavelFilter)
 
   // Navigation
   function goToday() {
@@ -517,13 +529,13 @@ export default function CalendarioPage() {
         <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
           <Filter size={16} /> Filtros
           {hasFilters && (
-            <button onClick={() => { setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setProjetoFilter('') }}
+            <button onClick={() => { setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setProjetoFilter(''); setResponsavelFilter('') }}
               className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
               <X size={14} /> Limpar
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
             <option value="">Todos os objetivos</option>
             {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
@@ -540,6 +552,12 @@ export default function CalendarioPage() {
             <option value="">Todos os projetos</option>
             {filteredProjetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
+          <UserAutocompleteSelect
+            value={responsavelFilter || null}
+            onChange={val => setResponsavelFilter(val || '')}
+            users={eligibleUsers}
+            placeholder="Todos os responsáveis"
+          />
         </div>
       </div>
 

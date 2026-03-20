@@ -6,14 +6,16 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
+import RegisterGestorModal from '@/components/RegisterGestorModal'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
-interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; participantes: Participante[] }
+interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; responsavel_atividade_id: string | null; participantes: Participante[] }
 interface Entrega {
   nome: string; descricao: string; criterios_aceite: string; dependencias_criticas: string
   quinzena: string; status: string; motivo_status: string
-  orgao_responsavel_setor_id: number | null; responsavel_entrega: string
+  orgao_responsavel_setor_id: number | null; responsavel_entrega_id: string | null
   participantes: Participante[]; atividades: Atividade[]
 }
 
@@ -52,7 +54,7 @@ export default function NovoProjetoPage() {
   const [descricao, setDescricao] = useState('')
   const [problemaResolve, setProblemaResolve] = useState('')
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
-  const [responsavel, setResponsavel] = useState('')
+  const [responsavelId, setResponsavelId] = useState<string | null>(null)
   const [indicadorSucesso, setIndicadorSucesso] = useState('')
   const [dependenciasProjetos, setDependenciasProjetos] = useState('')
 
@@ -63,6 +65,9 @@ export default function NovoProjetoPage() {
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
   const [configs, setConfigs] = useState<Record<string, string>>({})
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string }[]>([])
+  const [showGestorModal, setShowGestorModal] = useState(false)
+  const [dataInicio, setDataInicio] = useState('')
 
   const router = useRouter()
   const supabase = createClient()
@@ -92,6 +97,13 @@ export default function NovoProjetoPage() {
 
       const { data: s } = await supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
       if (s) setSetores(s)
+
+      const { data: usersData } = await supabase.from('profiles')
+        .select('id, nome, email')
+        .in('role', ['gestor', 'master', 'admin'])
+        .eq('ativo', true)
+        .order('nome')
+      if (usersData) setEligibleUsers(usersData)
 
       const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
       if (a) setAcoes(a)
@@ -127,7 +139,7 @@ export default function NovoProjetoPage() {
     setEntregas([...entregas, {
       nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '', quinzena: '',
       status: 'aberta', motivo_status: '',
-      orgao_responsavel_setor_id: null, responsavel_entrega: '',
+      orgao_responsavel_setor_id: null, responsavel_entrega_id: null,
       participantes: [{ setor_id: null, tipo_participante: 'setor', papel: '' }],
       atividades: []
     }])
@@ -161,7 +173,7 @@ export default function NovoProjetoPage() {
 
   function addAtividade(entregaIdx: number) {
     setEntregas(prev => prev.map((e, i) => i === entregaIdx ? {
-      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', status: 'aberta', motivo_status: '', participantes: [] }]
+      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', status: 'aberta', motivo_status: '', responsavel_atividade_id: null, participantes: [] }]
     } : e))
   }
 
@@ -257,11 +269,43 @@ export default function NovoProjetoPage() {
       }
     }
 
+    if (!responsavelId) {
+      alert('Selecione o líder do projeto.')
+      return
+    }
+    for (const e of entregas) {
+      if (!e.responsavel_entrega_id) {
+        alert(`Selecione o responsável pela entrega "${e.nome}".`)
+        return
+      }
+      for (const a of e.atividades) {
+        if (!a.responsavel_atividade_id) {
+          alert(`Selecione o responsável pela atividade "${a.nome}".`)
+          return
+        }
+      }
+    }
+    if (dataInicio) {
+      for (const e of entregas) {
+        if (e.quinzena && e.quinzena < dataInicio) {
+          alert(`A entrega "${e.nome}" tem prazo anterior à data de início do projeto.`)
+          return
+        }
+        for (const a of e.atividades) {
+          if (a.data_prevista && a.data_prevista < dataInicio) {
+            alert(`A atividade "${a.nome}" tem data anterior à data de início do projeto.`)
+            return
+          }
+        }
+      }
+    }
+
     setSaving(true)
     try {
       const { data: proj, error: projErr } = await supabase.from('projetos').insert({
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
-        responsavel: responsavel.trim() || null,
+        responsavel_id: responsavelId,
+        data_inicio: dataInicio || null,
         indicador_sucesso: indicadorSucesso.trim() || null,
         dependencias_projetos: dependenciasProjetos.trim() || null,
         tipo_acao: tipoAcao.length > 0 ? tipoAcao : null,
@@ -287,7 +331,7 @@ export default function NovoProjetoPage() {
           status: e.status,
           motivo_status: e.motivo_status.trim() || null,
           orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
-          responsavel_entrega: e.responsavel_entrega.trim() || null,
+          responsavel_entrega_id: e.responsavel_entrega_id || null,
         }).select().single()
         if (entErr) throw entErr
 
@@ -314,6 +358,7 @@ export default function NovoProjetoPage() {
             data_prevista: a.data_prevista || null,
             status: a.status,
             motivo_status: a.motivo_status.trim() || null,
+            responsavel_atividade_id: a.responsavel_atividade_id || null,
           }).select().single()
           if (ativErr) throw ativErr
 
@@ -417,6 +462,10 @@ export default function NovoProjetoPage() {
   function handleQuinzenaChange(eIdx: number, newQuinzena: string) {
     const entrega = entregas[eIdx]
     if (newQuinzena) {
+      if (dataInicio && newQuinzena < dataInicio) {
+        alert(`A quinzena não pode ser anterior à data de início do projeto (${dataInicio}).`)
+        return
+      }
       const ativComDataPosterior = entrega.atividades.filter(a => a.data_prevista && a.data_prevista > newQuinzena)
       if (ativComDataPosterior.length > 0) {
         const nomes = ativComDataPosterior.map(a => `"${a.nome}"`).join(', ')
@@ -498,15 +547,24 @@ export default function NovoProjetoPage() {
               </div>
 
               <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Responsável pelo projeto</label>
-                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
-                    <HelpCircle size={15} />
-                  </button>
-                </div>
-                <input type="text" value={responsavel} onChange={e => setResponsavel(e.target.value)} 
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
-                  placeholder="Ex: Chefe da Seção X - Maj BM Fulano" />
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Líder do projeto *</label>
+                <UserAutocompleteSelect
+                  value={responsavelId}
+                  onChange={setResponsavelId}
+                  users={eligibleUsers}
+                  placeholder="Selecione o líder do projeto..."
+                  required
+                  onRegisterNew={() => setShowGestorModal(true)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Data de início do projeto</label>
+                <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" />
+                <p className="text-xs text-gray-400 mt-1">Opcional. Entregas e atividades não poderão ter datas anteriores a esta.</p>
               </div>
             </div>
 
@@ -673,10 +731,19 @@ export default function NovoProjetoPage() {
                       )}
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-gray-500">Responsável pela entrega</label>
-                      <input type="text" value={e.responsavel_entrega}
-                        onChange={ev => updateEntrega(eIdx, 'responsavel_entrega', ev.target.value)}
-                        placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Responsável pela entrega *</label>
+                      <UserAutocompleteSelect
+                        value={e.responsavel_entrega_id}
+                        onChange={val => {
+                          const updated = [...entregas]
+                          updated[eIdx].responsavel_entrega_id = val
+                          setEntregas(updated)
+                        }}
+                        users={eligibleUsers}
+                        placeholder="Selecione o responsável..."
+                        required
+                        onRegisterNew={() => setShowGestorModal(true)}
+                      />
                     </div>
                   </div>
 
@@ -765,6 +832,22 @@ export default function NovoProjetoPage() {
                           <textarea value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
                             placeholder="Descrição da atividade *" className="input-field text-xs resize-none" rows={2} />
 
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Responsável pela atividade *</label>
+                            <UserAutocompleteSelect
+                              value={a.responsavel_atividade_id}
+                              onChange={val => {
+                                const updated = [...entregas]
+                                updated[eIdx].atividades[aIdx].responsavel_atividade_id = val
+                                setEntregas(updated)
+                              }}
+                              users={eligibleUsers}
+                              placeholder="Selecione o responsável..."
+                              required
+                              onRegisterNew={() => setShowGestorModal(true)}
+                            />
+                          </div>
+
                           {/* Status + Data prevista + Motivo */}
                           <div className="space-y-1.5">
                             <div className="flex flex-wrap items-end gap-2">
@@ -782,15 +865,20 @@ export default function NovoProjetoPage() {
                                 </select>
                               </div>
                               <div className="w-[140px]">
-                                <label className="text-[10px] font-medium text-gray-500">Data prevista</label>
+                                <label className="text-[10px] font-medium text-gray-500">Data prevista <span className="text-gray-400 font-normal">(prazo para conclusão)</span></label>
                                 <input type="date" value={a.data_prevista}
+                                  min={dataInicio || undefined}
                                   max={e.quinzena || undefined}
                                   onChange={ev => {
                                     const newDate = ev.target.value
+                                    if (newDate && dataInicio && newDate < dataInicio) {
+                                      alert(`A data não pode ser anterior à data de início do projeto (${dataInicio}).`)
+                                      return
+                                    }
                                     if (newDate && e.quinzena && newDate > e.quinzena) {
                                       alert(`A data não pode ser posterior à quinzena da entrega (${e.quinzena}).`)
                                       return
-                                }
+                                    }
                                     updateAtividade(eIdx, aIdx, 'data_prevista', newDate)
                                   }}
                                   className="w-full input-field text-xs" />
@@ -855,6 +943,16 @@ export default function NovoProjetoPage() {
           </button>
         </div>
       </div>
+
+      <RegisterGestorModal
+        isOpen={showGestorModal}
+        onClose={() => setShowGestorModal(false)}
+        onSuccess={(newUser) => {
+          setEligibleUsers(prev => [...prev, newUser].sort((a, b) => a.nome.localeCompare(b.nome)))
+          setShowGestorModal(false)
+        }}
+        setores={setores}
+      />
     </div>
   )
 }

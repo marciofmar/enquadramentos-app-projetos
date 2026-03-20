@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Profile } from '@/lib/types'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 
 interface ProjetoCard {
   id: number
@@ -23,6 +24,9 @@ interface ProjetoCard {
   tem_atividades_atrasadas: boolean
   status_projeto: 'em_andamento' | 'concluido' | 'cancelado'
   solicitacoes_pendentes: number
+  responsavel_id: string | null
+  responsaveis_entrega: string[]
+  responsaveis_atividade: string[]
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -45,11 +49,13 @@ export default function ProjetosPage() {
   const [acaoFilter, setAcaoFilter] = useState('')
   const [setorFilter, setSetorFilter] = useState('')
   const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
+  const [responsavelFilter, setResponsavelFilter] = useState('')
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
   const [acoes, setAcoes] = useState<{ numero: string; nome: string; oe_codigo: string }[]>([])
   const [setores, setSetores] = useState<{ id: number; codigo: string; nome_completo: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string }[]>([])
 
   const router = useRouter()
   const supabase = createClient()
@@ -88,14 +94,22 @@ export default function ProjetosPage() {
     const { data: setoresData } = await supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
     if (setoresData) setSetores(setoresData)
 
+    // Load eligible users for responsavel filter
+    const { data: usersData } = await supabase.from('profiles')
+      .select('id, nome')
+      .in('role', ['gestor', 'master', 'admin'])
+      .eq('ativo', true)
+      .order('nome')
+    if (usersData) setEligibleUsers(usersData)
+
     // Projects with all related data
     const { data: projData } = await supabase.from('projetos')
-      .select(`id, nome, descricao, setor_lider_id, tipo_acao,
+      .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-        entregas(id, nome, data_final_prevista, status,
+        entregas(id, nome, data_final_prevista, status, responsavel_entrega_id,
           entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
-          atividades(id, nome, data_prevista, status,
+          atividades(id, nome, data_prevista, status, responsavel_atividade_id,
             atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
         )`)
       .order('nome')
@@ -108,6 +122,16 @@ export default function ProjetosPage() {
 
     if (projData) {
       const cards: ProjetoCard[] = projData.map((p: any) => {
+        // Collect responsaveis
+        const respEntregaSet = new Set<string>()
+        const respAtividadeSet = new Set<string>()
+        p.entregas?.forEach((e: any) => {
+          if (e.responsavel_entrega_id) respEntregaSet.add(e.responsavel_entrega_id)
+          e.atividades?.forEach((a: any) => {
+            if (a.responsavel_atividade_id) respAtividadeSet.add(a.responsavel_atividade_id)
+          })
+        })
+
         // Collect participante setores (unique)
         const setorSet = new Set<string>()
         p.entregas?.forEach((e: any) => {
@@ -209,6 +233,9 @@ export default function ProjetosPage() {
           tem_atividades_atrasadas: ativAtrasadas.length > 0,
           status_projeto,
           solicitacoes_pendentes: solsPorProjeto[p.id] || 0,
+          responsavel_id: p.responsavel_id || null,
+          responsaveis_entrega: Array.from(respEntregaSet),
+          responsaveis_atividade: Array.from(respAtividadeSet),
         }
       })
       setProjetos(cards)
@@ -247,9 +274,15 @@ export default function ProjetosPage() {
       if (tipoAcaoFilter) {
         if (!p.tipo_acao.includes(tipoAcaoFilter)) return false
       }
+      if (responsavelFilter) {
+        const isLider = p.responsavel_id === responsavelFilter
+        const isRespEntrega = p.responsaveis_entrega.includes(responsavelFilter)
+        const isRespAtividade = p.responsaveis_atividade.includes(responsavelFilter)
+        if (!isLider && !isRespEntrega && !isRespAtividade) return false
+      }
       return true
     })
-  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter])
+  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter])
 
   const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
   const [viewMode, setViewMode] = useState<'normal' | 'compact'>('normal')
@@ -304,7 +337,7 @@ export default function ProjetosPage() {
 
   const [showPaineis, setShowPaineis] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter || tipoAcaoFilter)
+  const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter || tipoAcaoFilter || responsavelFilter)
   const canCreate = profile?.role === 'admin' || profile?.role === 'master' || (profile?.role === 'gestor' && configs['proj_permitir_cadastro'] !== 'false')
 
   function formatQuinzena(dateStr: string | null) {
@@ -463,13 +496,13 @@ export default function ProjetosPage() {
           <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
             <Filter size={16} /> Filtros
             {hasFilters && (
-              <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setTipoAcaoFilter('') }}
+              <button onClick={() => { setSearchText(''); setOeFilter(''); setAcaoFilter(''); setSetorFilter(''); setTipoAcaoFilter(''); setResponsavelFilter('') }}
                 className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
                 <X size={14} /> Limpar
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" placeholder="Buscar projeto..." value={searchText}
@@ -491,6 +524,12 @@ export default function ProjetosPage() {
               <option value="">Todos os tipos de ação</option>
               {['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração'].map(t => <option key={t} value={t}>{t}</option>)}
             </select>
+            <UserAutocompleteSelect
+              value={responsavelFilter || null}
+              onChange={val => setResponsavelFilter(val || '')}
+              users={eligibleUsers}
+              placeholder="Todos os responsáveis"
+            />
           </div>
         </div>
       )}

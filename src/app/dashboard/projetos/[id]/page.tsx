@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
+import RegisterGestorModal from '@/components/RegisterGestorModal'
 import type { Profile } from '@/lib/types'
 
 const QUINZENAS = (() => {
@@ -75,6 +77,9 @@ export default function ProjetoDetalhePage() {
   const [newEntregaForm, setNewEntregaForm] = useState<any>({})
   const [allExpanded, setAllExpanded] = useState(false)
 
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string }[]>([])
+  const [showGestorModal, setShowGestorModal] = useState(false)
+
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
 
@@ -107,15 +112,22 @@ export default function ProjetoDetalhePage() {
     const { data: s } = await supabase.from('setores').select('id, codigo, nome_completo').order('codigo')
     if (s) setSetores(s)
 
+    const { data: usersData } = await supabase.from('profiles')
+      .select('id, nome, email')
+      .in('role', ['gestor', 'master', 'admin'])
+      .eq('ativo', true)
+      .order('nome')
+    if (usersData) setEligibleUsers(usersData)
+
     const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
     if (a) setAcoes(a)
 
     const { data: proj } = await supabase.from('projetos')
-      .select(`*, setor_lider:setor_lider_id(codigo, nome_completo),
+      .select(`*, responsavel_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
-        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega,
+        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
-          atividades(id, nome, descricao, data_prevista, status, motivo_status,
+          atividades(id, nome, descricao, data_prevista, status, motivo_status, responsavel_atividade_id,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
           )
         )`)
@@ -246,13 +258,14 @@ export default function ProjetoDetalhePage() {
   }
 
   function startEditProjeto() {
-    if (editingEntrega !== null || editingAtividade !== null || showNewEntregaForm) {
-      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar o projeto.`)
-      return
-    }
+    // Cancelar qualquer edição ativa automaticamente
+    if (editingEntrega !== null) setEditingEntrega(null)
+    if (editingAtividade !== null) setEditingAtividade(null)
+    if (showNewEntregaForm) setShowNewEntregaForm(false)
     setEditForm({
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
-      responsavel: projeto.responsavel || '',
+      responsavel_id: projeto.responsavel_id || '',
+      data_inicio: projeto.data_inicio || '',
       indicador_sucesso: projeto.indicador_sucesso || '',
       dependencias_projetos: projeto.dependencias_projetos || '',
       tipo_acao: projeto.tipo_acao || [],
@@ -265,6 +278,23 @@ export default function ProjetoDetalhePage() {
   async function saveEditProjeto() {
     setSaving(true)
 
+    // R5: Se data_inicio mudou, validar contra datas de entregas e atividades
+    if (editForm.data_inicio && editForm.data_inicio !== projeto.data_inicio) {
+      const entregas = projeto.entregas || []
+      for (const ent of entregas) {
+        if (ent.data_final_prevista && ent.data_final_prevista < editForm.data_inicio) {
+          alert(`A data de início não pode ser posterior à quinzena da entrega "${ent.nome}" (${ent.data_final_prevista}).`)
+          setSaving(false); return
+        }
+        for (const ativ of (ent.atividades || [])) {
+          if (ativ.data_prevista && ativ.data_prevista < editForm.data_inicio) {
+            alert(`A data de início não pode ser posterior à data da atividade "${ativ.nome}" (${ativ.data_prevista}).`)
+            setSaving(false); return
+          }
+        }
+      }
+    }
+
     if (needsApproval) {
       if (hasPendingSolicitacao('projeto', projeto.id)) {
         alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
@@ -272,7 +302,8 @@ export default function ProjetoDetalhePage() {
       }
       const dados = {
         nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
-        responsavel: editForm.responsavel?.trim() || null,
+        responsavel_id: editForm.responsavel_id || null,
+        data_inicio: editForm.data_inicio || null,
         indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
         dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
         tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
@@ -286,7 +317,8 @@ export default function ProjetoDetalhePage() {
 
     const novosDados = {
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
-      responsavel: editForm.responsavel?.trim() || null,
+      responsavel_id: editForm.responsavel_id || null,
+      data_inicio: editForm.data_inicio || null,
       indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
       dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
       tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
@@ -294,7 +326,8 @@ export default function ProjetoDetalhePage() {
     }
     const anterior = {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
-      responsavel: projeto.responsavel, indicador_sucesso: projeto.indicador_sucesso,
+      responsavel_id: projeto.responsavel_id, data_inicio: projeto.data_inicio,
+      indicador_sucesso: projeto.indicador_sucesso,
       dependencias_projetos: projeto.dependencias_projetos,
       tipo_acao: projeto.tipo_acao, setor_lider_id: projeto.setor_lider_id,
     }
@@ -330,20 +363,17 @@ export default function ProjetoDetalhePage() {
 
   // Entrega edit
   function startEditEntrega(e: any) {
-    if (editingProjeto || editingAtividade !== null || showNewEntregaForm) {
-      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar esta entrega.`)
-      return
-    }
-    if (editingEntrega !== null && editingEntrega !== e.id) {
-      alert('Finalize ou cancele a edição da entrega atual antes de editar outra.')
-      return
-    }
+    // Cancelar qualquer edição ativa automaticamente
+    if (editingProjeto) setEditingProjeto(false)
+    if (editingAtividade !== null) setEditingAtividade(null)
+    if (showNewEntregaForm) setShowNewEntregaForm(false)
+    if (editingEntrega !== null && editingEntrega !== e.id) setEditingEntrega(null)
     setEditForm({
       nome: e.nome, descricao: e.descricao, criterios_aceite: e.criterios_aceite || '',
       dependencias_criticas: e.dependencias_criticas || '',
       data_final_prevista: e.data_final_prevista || '', status: e.status, motivo_status: e.motivo_status || '',
       orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
-      responsavel_entrega: e.responsavel_entrega || '',
+      responsavel_entrega_id: e.responsavel_entrega_id || '',
       participantes: e.entrega_participantes?.map((p: any) => ({
         id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
       })) || []
@@ -366,6 +396,12 @@ export default function ProjetoDetalhePage() {
     const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
     if (new Set(pKeys).size !== pKeys.length) {
       alert('Há participantes duplicados nesta entrega. Use o campo "papel" para múltiplos papéis do mesmo setor.')
+      setSaving(false); return
+    }
+
+    // R5: Validate quinzena against projeto.data_inicio
+    if (editForm.data_final_prevista && projeto.data_inicio && editForm.data_final_prevista < projeto.data_inicio) {
+      alert(`A quinzena da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
       setSaving(false); return
     }
 
@@ -419,7 +455,7 @@ export default function ProjetoDetalhePage() {
         data_final_prevista: editForm.data_final_prevista || null,
         status: editForm.status, motivo_status: editForm.motivo_status || null,
         orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
-        responsavel_entrega: editForm.responsavel_entrega?.trim() || null,
+        responsavel_entrega_id: editForm.responsavel_entrega_id || null,
         participantes: validP.map((p: any) => ({
           setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
           tipo_participante: p.tipo_participante, papel: p.papel.trim()
@@ -437,7 +473,7 @@ export default function ProjetoDetalhePage() {
       data_final_prevista: editForm.data_final_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
       orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
-      responsavel_entrega: editForm.responsavel_entrega?.trim() || null,
+      responsavel_entrega_id: editForm.responsavel_entrega_id || null,
     }
     const anteriorE = {
       nome: entrega?.nome, descricao: entrega?.descricao,
@@ -445,7 +481,7 @@ export default function ProjetoDetalhePage() {
       data_final_prevista: entrega?.data_final_prevista,
       status: entrega?.status, motivo_status: entrega?.motivo_status,
       orgao_responsavel_setor_id: entrega?.orgao_responsavel_setor_id,
-      responsavel_entrega: entrega?.responsavel_entrega,
+      responsavel_entrega_id: entrega?.responsavel_entrega_id,
     }
     const { error } = await supabase.from('entregas').update(novosDadosE).eq('id', entregaId)
     if (error) { alert(error.message); setSaving(false); return }
@@ -483,14 +519,14 @@ export default function ProjetoDetalhePage() {
   }
 
   function addNewEntrega() {
-    if (isAnyEditing()) {
-      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de criar uma nova entrega.`)
-      return
-    }
+    // Cancelar qualquer edição ativa automaticamente
+    if (editingProjeto) setEditingProjeto(false)
+    if (editingEntrega !== null) setEditingEntrega(null)
+    if (editingAtividade !== null) setEditingAtividade(null)
     setNewEntregaForm({
       nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '',
       data_final_prevista: '', status: 'aberta', motivo_status: '',
-      orgao_responsavel_setor_id: null, responsavel_entrega: '',
+      orgao_responsavel_setor_id: null, responsavel_entrega_id: '',
       participantes: []
     })
     setShowNewEntregaForm(true)
@@ -513,6 +549,12 @@ export default function ProjetoDetalhePage() {
       alert('Há participantes duplicados nesta entrega.'); setSaving(false); return
     }
 
+    // R5: Validate quinzena against projeto.data_inicio
+    if (newEntregaForm.data_final_prevista && projeto.data_inicio && newEntregaForm.data_final_prevista < projeto.data_inicio) {
+      alert(`A quinzena da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
+      setSaving(false); return
+    }
+
     const { data, error } = await supabase.from('entregas').insert({
       projeto_id: projeto.id,
       nome: newEntregaForm.nome.trim(),
@@ -523,7 +565,7 @@ export default function ProjetoDetalhePage() {
       status: newEntregaForm.status,
       motivo_status: newEntregaForm.motivo_status?.trim() || null,
       orgao_responsavel_setor_id: newEntregaForm.orgao_responsavel_setor_id || null,
-      responsavel_entrega: newEntregaForm.responsavel_entrega?.trim() || null,
+      responsavel_entrega_id: newEntregaForm.responsavel_entrega_id || null,
     }).select().single()
     if (error) { alert(error.message); setSaving(false); return }
 
@@ -544,17 +586,15 @@ export default function ProjetoDetalhePage() {
 
   // Atividade edit
   function startEditAtividade(a: any, entrega: any) {
-    if (editingProjeto || editingEntrega !== null || showNewEntregaForm) {
-      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de editar esta atividade.`)
-      return
-    }
-    if (editingAtividade !== null && editingAtividade !== a.id) {
-      alert('Finalize ou cancele a edição da atividade atual antes de editar outra.')
-      return
-    }
+    // Cancelar qualquer edição ativa automaticamente
+    if (editingProjeto) setEditingProjeto(false)
+    if (editingEntrega !== null) setEditingEntrega(null)
+    if (showNewEntregaForm) setShowNewEntregaForm(false)
+    if (editingAtividade !== null && editingAtividade !== a.id) setEditingAtividade(null)
     setEditForm({
       nome: a.nome, descricao: a.descricao, data_prevista: a.data_prevista || '',
       status: a.status || 'aberta', motivo_status: a.motivo_status || '',
+      responsavel_atividade_id: a.responsavel_atividade_id || '',
       entrega_data_final: entrega.data_final_prevista || '',
       entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
@@ -575,6 +615,12 @@ export default function ProjetoDetalhePage() {
     // Validate date <= entrega quinzena
     if (editForm.data_prevista && editForm.entrega_data_final && editForm.data_prevista > editForm.entrega_data_final) {
       alert(`A data da atividade não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
+      setSaving(false); return
+    }
+
+    // R5: Validate data_prevista against projeto.data_inicio
+    if (editForm.data_prevista && projeto.data_inicio && editForm.data_prevista < projeto.data_inicio) {
+      alert(`A data da atividade não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
       setSaving(false); return
     }
 
@@ -616,6 +662,7 @@ export default function ProjetoDetalhePage() {
         nome: editForm.nome, descricao: editForm.descricao,
         data_prevista: editForm.data_prevista || null,
         status: editForm.status, motivo_status: editForm.motivo_status || null,
+        responsavel_atividade_id: editForm.responsavel_atividade_id || null,
         participantes: validP.map((p: any) => ({
           setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
           tipo_participante: p.tipo_participante, papel: p.papel.trim()
@@ -629,7 +676,8 @@ export default function ProjetoDetalhePage() {
     const novosDadosA = {
       nome: editForm.nome.trim(), descricao: editForm.descricao.trim(),
       data_prevista: editForm.data_prevista || null,
-      status: editForm.status, motivo_status: editForm.motivo_status || null
+      status: editForm.status, motivo_status: editForm.motivo_status || null,
+      responsavel_atividade_id: editForm.responsavel_atividade_id || null
     }
 
     let realAtivId = ativId
@@ -737,14 +785,16 @@ export default function ProjetoDetalhePage() {
   }
 
   function addNewAtividade(entregaId: number) {
-    if (isAnyEditing()) {
-      alert(`Finalize ou cancele a edição de ${getEditingLabel()} antes de adicionar uma atividade.`)
-      return
-    }
+    // Cancelar qualquer edição ativa automaticamente
+    if (editingProjeto) setEditingProjeto(false)
+    if (editingEntrega !== null) setEditingEntrega(null)
+    if (showNewEntregaForm) setShowNewEntregaForm(false)
+    if (editingAtividade !== null) setEditingAtividade(null)
     const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
     setEditForm({
       nome: '', descricao: '', data_prevista: '',
       status: 'aberta', motivo_status: '',
+      responsavel_atividade_id: '',
       entrega_data_final: entrega?.data_final_prevista || '',
       entrega_participantes: entrega?.entrega_participantes || [],
       participantes: [],
@@ -887,11 +937,24 @@ export default function ProjetoDetalhePage() {
                 
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Responsável pelo projeto</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Líder do projeto *</label>
                     <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
-                  <input type="text" value={editForm.responsavel || ''} onChange={e => setEditForm({ ...editForm, responsavel: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" placeholder="Ex: Chefe da Seção X - Maj BM Fulano" />
+                  <UserAutocompleteSelect
+                    value={editForm.responsavel_id}
+                    onChange={val => setEditForm({...editForm, responsavel_id: val})}
+                    users={eligibleUsers}
+                    placeholder="Selecione o líder..."
+                    required
+                    disabled={!canEditProjeto}
+                    onRegisterNew={() => setShowGestorModal(true)}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Data de início</label>
+                  <input type="date" value={editForm.data_inicio || ''} onChange={e => setEditForm({ ...editForm, data_inicio: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" />
                 </div>
               </div>
 
@@ -1004,9 +1067,14 @@ export default function ProjetoDetalhePage() {
                 )}
               </div>
 
-              {projeto.responsavel && (
-                <div className="mb-5">
-                  <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Responsável:</span> {projeto.responsavel}</p>
+              {(projeto.responsavel_id || projeto.data_inicio) && (
+                <div className="mb-5 flex flex-wrap gap-x-6 gap-y-1">
+                  {projeto.responsavel_id && (
+                    <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Líder:</span> {eligibleUsers.find(u => u.id === projeto.responsavel_id)?.nome || '—'}</p>
+                  )}
+                  {projeto.data_inicio && (
+                    <p className="text-sm text-gray-600"><span className="font-semibold text-gray-700">Início:</span> {formatDateBR(projeto.data_inicio)}</p>
+                  )}
                 </div>
               )}
 
@@ -1097,7 +1165,7 @@ export default function ProjetoDetalhePage() {
       {projeto.entregas?.some((e: any) => e.data_final_prevista) && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Cronograma de Entregas</h2>
-          <GanttChart entregas={projeto.entregas} />
+          <GanttChart entregas={projeto.entregas} dataInicio={projeto.data_inicio} />
         </div>
       )}
 
@@ -1166,9 +1234,13 @@ export default function ProjetoDetalhePage() {
                 </div>
                 <div>
                   <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
-                  <input type="text" value={newEntregaForm.responsavel_entrega || ''}
-                    onChange={ev => setNewEntregaForm({ ...newEntregaForm, responsavel_entrega: ev.target.value })}
-                    placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                  <UserAutocompleteSelect
+                    value={newEntregaForm.responsavel_entrega_id}
+                    onChange={val => setNewEntregaForm({...newEntregaForm, responsavel_entrega_id: val})}
+                    users={eligibleUsers}
+                    placeholder="Selecione o responsável..."
+                    onRegisterNew={() => setShowGestorModal(true)}
+                  />
                 </div>
               </div>
 
@@ -1266,7 +1338,18 @@ export default function ProjetoDetalhePage() {
             }`}>
               {/* Entrega header */}
               <div className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 ${isEditing ? 'bg-blue-50/50' : ''}`}
-                onClick={() => !isEditing && setExpanded(prev => ({ ...prev, [e.id]: !prev[e.id] }))}>
+                onClick={() => {
+                  if (isEditing) {
+                    setEditingEntrega(null)
+                    setEditingAtividade(null)
+                  } else {
+                    if (expanded[e.id]) {
+                      // Ao colapsar, limpar edição de atividade dentro desta entrega
+                      setEditingAtividade(null)
+                    }
+                    setExpanded(prev => ({ ...prev, [e.id]: !prev[e.id] }))
+                  }
+                }}>
                 <div className="w-7 h-7 rounded-full bg-sedec-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
                   {entregaIndex + 1}
                 </div>
@@ -1343,10 +1426,14 @@ export default function ProjetoDetalhePage() {
                         </div>
                         <div>
                           <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
-                          <input type="text" value={editForm.responsavel_entrega || ''}
-                            onChange={ev => setEditForm({ ...editForm, responsavel_entrega: ev.target.value })}
+                          <UserAutocompleteSelect
+                            value={editForm.responsavel_entrega_id}
+                            onChange={val => setEditForm({...editForm, responsavel_entrega_id: val})}
+                            users={eligibleUsers}
+                            placeholder="Selecione o responsável..."
                             disabled={!canEditProjeto}
-                            placeholder="Ex: Cap BM Fulano" className="input-field text-xs" />
+                            onRegisterNew={() => setShowGestorModal(true)}
+                          />
                         </div>
                       </div>
 
@@ -1471,7 +1558,7 @@ export default function ProjetoDetalhePage() {
                       )}
 
                       {/* Órgão responsável + Responsável */}
-                      {(e.orgao_responsavel_setor_id || e.responsavel_entrega) && (
+                      {(e.orgao_responsavel_setor_id || e.responsavel_entrega_id) && (
                         <div className="flex flex-wrap gap-4 mb-3 text-xs">
                           {e.orgao_responsavel_setor_id && (() => {
                             const p = e.entrega_participantes?.find((pp: any) => pp.tipo_participante === 'setor' && pp.setor_id === e.orgao_responsavel_setor_id)
@@ -1482,10 +1569,10 @@ export default function ProjetoDetalhePage() {
                               </div>
                             )
                           })()}
-                          {e.responsavel_entrega && (
+                          {e.responsavel_entrega_id && (
                             <div>
                               <span className="font-semibold text-gray-700">Responsável: </span>
-                              <span className="text-gray-600">{e.responsavel_entrega}</span>
+                              <span className="text-gray-600">{eligibleUsers.find(u => u.id === e.responsavel_entrega_id)?.nome || '—'}</span>
                             </div>
                           )}
                         </div>
@@ -1547,6 +1634,17 @@ export default function ProjetoDetalhePage() {
                                         <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
                                           disabled={!canEditAtividade} className="input-field text-xs" placeholder="Descreva esta atividade" />
                                       </div>
+                                      <div>
+                                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Responsável pela atividade</label>
+                                        <UserAutocompleteSelect
+                                          value={editForm.responsavel_atividade_id}
+                                          onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
+                                          users={eligibleUsers}
+                                          placeholder="Selecione o responsável..."
+                                          disabled={!canEditAtividade}
+                                          onRegisterNew={() => setShowGestorModal(true)}
+                                        />
+                                      </div>
 
                                       <div className="space-y-1.5">
                                         <div className="flex flex-wrap items-end gap-2">
@@ -1566,7 +1664,7 @@ export default function ProjetoDetalhePage() {
                                           </div>
 
                                           <div className="w-[140px]">
-                                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista <span className="text-gray-400 font-normal">(prazo para conclusão)</span></label>
                                             <input type="date" value={editForm.data_prevista || ''}
                                               max={editForm.entrega_data_final || undefined}
                                               disabled={!canEditDataAtividade}
@@ -1642,7 +1740,13 @@ export default function ProjetoDetalhePage() {
                                         </div>
                                       </div>
                                       <p className="text-xs text-gray-600 mb-3 pl-7">{a.descricao}</p>
-                                      
+                                      {a.responsavel_atividade_id && (
+                                        <div className="text-xs pl-7 mb-2">
+                                          <span className="text-gray-500 font-medium">Responsável: </span>
+                                          <span className="text-gray-600">{eligibleUsers.find(u => u.id === a.responsavel_atividade_id)?.nome || '—'}</span>
+                                        </div>
+                                      )}
+
                                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pl-7 text-xs border-t border-gray-50 pt-3">
                                         <div className="flex items-center gap-1.5">
                                           <span className="text-gray-500 font-medium">Status:</span>
@@ -1699,6 +1803,16 @@ export default function ProjetoDetalhePage() {
                                   <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
                                     className="input-field text-xs" placeholder="Descreva esta atividade" />
                                 </div>
+                                <div>
+                                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Responsável pela atividade</label>
+                                  <UserAutocompleteSelect
+                                    value={editForm.responsavel_atividade_id}
+                                    onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
+                                    users={eligibleUsers}
+                                    placeholder="Selecione o responsável..."
+                                    onRegisterNew={() => setShowGestorModal(true)}
+                                  />
+                                </div>
                                 <div className="space-y-1.5">
                                   <div className="flex flex-wrap items-end gap-2">
                                     <div className="w-[140px]">
@@ -1714,7 +1828,7 @@ export default function ProjetoDetalhePage() {
                                       </select>
                                     </div>
                                     <div className="w-[140px]">
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista</label>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista <span className="text-gray-400 font-normal">(prazo para conclusão)</span></label>
                                       <input type="date" value={editForm.data_prevista || ''}
                                         max={editForm.entrega_data_final || undefined}
                                         onChange={ev => {
@@ -1837,6 +1951,16 @@ export default function ProjetoDetalhePage() {
           </div>
         </div>
       )}
+
+      <RegisterGestorModal
+        isOpen={showGestorModal}
+        onClose={() => setShowGestorModal(false)}
+        onSuccess={(newUser) => {
+          setEligibleUsers(prev => [...prev, newUser].sort((a, b) => a.nome.localeCompare(b.nome)))
+          setShowGestorModal(false)
+        }}
+        setores={setores}
+      />
     </div>
   )
 }
@@ -1845,7 +1969,7 @@ export default function ProjetoDetalhePage() {
 // GANTT CHART (lightweight, no deps)
 // ============================================================
 
-function GanttChart({ entregas }: { entregas: any[] }) {
+function GanttChart({ entregas, dataInicio }: { entregas: any[]; dataInicio?: string | null }) {
   const withDate = entregas.filter((e: any) => e.data_final_prevista)
   if (withDate.length === 0) return null
 
@@ -1859,12 +1983,21 @@ function GanttChart({ entregas }: { entregas: any[] }) {
     return `${dd}/${mm}`
   }
 
-  // Data de início de cada entrega: atividade mais cedo ou hoje
+  // Data de início de cada entrega:
+  // - Se houver atividades com data: atividade mais cedo
+  // - Se não houver atividades mas houver data de início do projeto: data de início do projeto
+  // - Senão: hoje
   const getStart = (e: any) => {
     const ativDates = (e.atividades || [])
       .filter((a: any) => a.data_prevista)
       .map((a: any) => new Date(a.data_prevista + 'T00:00:00').getTime())
-    return new Date(ativDates.length > 0 ? Math.min(...ativDates) : now.getTime())
+    if (ativDates.length > 0) {
+      return new Date(Math.min(...ativDates))
+    }
+    if (dataInicio) {
+      return new Date(dataInicio + 'T00:00:00')
+    }
+    return new Date(now.getTime())
   }
 
   // Calcular range global com margem

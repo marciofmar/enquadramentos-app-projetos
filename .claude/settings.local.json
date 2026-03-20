@@ -26,7 +26,13 @@
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/20260316120000_dependencias_projetos.sql)",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/20260317120000_orgao_responsavel_entrega.sql)",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"NOTIFY pgrst, ''reload schema'';\")",
-      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT column_name FROM information_schema.columns WHERE table_name=''projetos'' AND column_name=''dependencias_projetos'' UNION ALL SELECT column_name FROM information_schema.columns WHERE table_name=''entregas'' AND column_name IN \\(''orgao_responsavel_setor_id'', ''responsavel_entrega''\\);\")"
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT column_name FROM information_schema.columns WHERE table_name=''projetos'' AND column_name=''dependencias_projetos'' UNION ALL SELECT column_name FROM information_schema.columns WHERE table_name=''entregas'' AND column_name IN \\(''orgao_responsavel_setor_id'', ''responsavel_entrega''\\);\")",
+      "Bash(grep -n \"on_auth_user_created\\\\|AFTER INSERT ON auth.users\" /c/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/migrations/20260320_120000_solicitante_responsavel_datainicio.sql)",
+      "Bash(npx tsc --noEmit --pretty)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f \"supabase/migrations/20260320_140000_admin_create_user_function.sql\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \":*)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres --set=client_encoding=UTF8 -c \":*)"
     ]
   }
 }

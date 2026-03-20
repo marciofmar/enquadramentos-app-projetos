@@ -70,20 +70,20 @@ export default function LoginPage() {
           body: JSON.stringify({ userId: signUpData.user.id }),
         })
         if (signUpData.session) {
-          router.push('/dashboard')
+          router.push('/pendente')
           router.refresh()
         } else {
           // Fallback: se não tiver session, tentar login
           const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })
           if (!loginErr) {
-            router.push('/dashboard')
+            router.push('/pendente')
             router.refresh()
           } else {
-            setMessage('Conta criada! Faça login para continuar.')
+            setMessage('Conta criada! Aguardando aprovação do administrador.')
           }
         }
       } else if (signUpData.session) {
-        router.push('/dashboard')
+        router.push('/pendente')
         router.refresh()
       } else {
         // Confirmação de email habilitada — aguardar verificação

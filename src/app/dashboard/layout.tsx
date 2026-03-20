@@ -10,6 +10,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [pendingSolicitacoes, setPendingSolicitacoes] = useState(0)
+  const [pendingSolicitantes, setPendingSolicitantes] = useState(0)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -27,6 +28,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       if (data) {
         setProfile(data as any)
+        // Guarda: se solicitante, redirecionar para /pendente
+        if (data.role === 'solicitante') {
+          router.push('/pendente')
+          return
+        }
         // Guarda: se senha foi zerada, forçar troca de senha
         if (data.senha_zerada && !window.location.pathname.includes('/dashboard/perfil')) {
           router.push('/dashboard/perfil?forcarSenha=true')
@@ -41,9 +47,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!profile || (profile.role !== 'admin' && profile.role !== 'master')) return
     async function refreshCount() {
-      const { count } = await supabase.from('solicitacoes_alteracao')
-        .select('*', { count: 'exact', head: true }).eq('status', 'em_analise')
-      setPendingSolicitacoes(count || 0)
+      const [solRes, solicitantesRes] = await Promise.all([
+        supabase.from('solicitacoes_alteracao')
+          .select('*', { count: 'exact', head: true }).eq('status', 'em_analise'),
+        supabase.from('profiles')
+          .select('*', { count: 'exact', head: true }).eq('role', 'solicitante'),
+      ])
+      setPendingSolicitacoes(solRes.count || 0)
+      setPendingSolicitantes(solicitantesRes.count || 0)
     }
     refreshCount()
     const onFocus = () => refreshCount()
@@ -103,6 +114,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center gap-4">
               {(profile?.role === 'admin' || profile?.role === 'master') && (
                 <div className="flex items-center gap-3">
+                  {pendingSolicitantes > 0 && (
+                    <button onClick={() => router.push('/admin?tab=usuarios')}
+                      className="flex items-center gap-1.5 text-yellow-400 hover:text-yellow-300 text-xs transition-colors">
+                      <User size={14} />
+                      <span className="hidden sm:inline">{pendingSolicitantes} cadastro(s) pendente(s)</span>
+                      <span className="sm:hidden bg-yellow-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitantes}</span>
+                    </button>
+                  )}
                   {pendingSolicitacoes > 0 && (
                     <button onClick={() => router.push('/admin')}
                       className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 text-xs transition-colors animate-pulse">

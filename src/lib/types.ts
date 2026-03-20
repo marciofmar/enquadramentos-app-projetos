@@ -3,7 +3,7 @@ export interface Profile {
   email: string
   nome: string
   setor_id: number | null
-  role: 'admin' | 'master' | 'gestor' | 'usuario'
+  role: 'admin' | 'master' | 'gestor' | 'usuario' | 'solicitante'
   ativo: boolean
   senha_zerada?: boolean
 }
@@ -95,7 +95,8 @@ export interface Projeto {
   nome: string
   descricao: string
   problema_resolve: string
-  responsavel: string | null
+  responsavel_id: string | null
+  data_inicio: string | null
   indicador_sucesso: string | null
   tipo_acao: string[] | null
   setor_lider_id: number
@@ -114,7 +115,7 @@ export interface Entrega {
   status: 'aberta' | 'em_andamento' | 'aguardando' | 'resolvida' | 'cancelada'
   motivo_status: string | null
   orgao_responsavel_setor_id: number | null
-  responsavel_entrega: string | null
+  responsavel_entrega_id: string | null
 }
 
 export interface Atividade {
@@ -122,6 +123,7 @@ export interface Atividade {
   entrega_id: number
   nome: string
   descricao: string
+  responsavel_atividade_id: string | null
 }
 
 export interface SolicitacaoAlteracao {

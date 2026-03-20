@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Protected routes
+  // Protected routes - redirect unauthenticated users
   if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
@@ -36,14 +36,50 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
+  // Block solicitante users from dashboard/admin
+  if (user && (request.nextUrl.pathname.startsWith('/dashboard') || request.nextUrl.pathname.startsWith('/admin'))) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'solicitante') {
+      return NextResponse.redirect(new URL('/pendente', request.url))
+    }
+  }
+
   // Redirect logged-in users from login page
   if (user && request.nextUrl.pathname === '/login') {
+    // Check if solicitante — send to /pendente instead of /dashboard
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'solicitante') {
+      return NextResponse.redirect(new URL('/pendente', request.url))
+    }
     return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // /pendente page — if user is not solicitante, redirect to dashboard
+  if (user && request.nextUrl.pathname === '/pendente') {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile && profile.role !== 'solicitante') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/login', '/pendente'],
 }

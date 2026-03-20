@@ -1040,8 +1040,18 @@ function UsuariosAdmin() {
     setSavingUser(null)
   }
 
+  const pendingSolicitantes = users.filter(u => u.role === 'solicitante').length
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="space-y-3">
+      {pendingSolicitantes > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 flex items-center gap-2">
+          <span className="bg-yellow-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">{pendingSolicitantes}</span>
+          <span className="text-sm text-yellow-800 font-medium">cadastro(s) aguardando aprovação</span>
+          <span className="text-xs text-yellow-600 ml-1">— altere o perfil para aprovar o acesso</span>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1055,7 +1065,7 @@ function UsuariosAdmin() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {users.map(u => (
-              <tr key={u.id} className="hover:bg-gray-50">
+              <tr key={u.id} className={`hover:bg-gray-50 ${u.role === 'solicitante' ? 'bg-yellow-50/50' : ''}`}>
                 <td className="px-4 py-3">
                   {editingNome === u.id ? (
                     <div className="flex items-center gap-1">
@@ -1107,8 +1117,10 @@ function UsuariosAdmin() {
                       u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
                       u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
                       u.role === 'gestor' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                      u.role === 'solicitante' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
                       'bg-gray-50 border-gray-200 text-gray-600'
                     }`}>
+                    <option value="solicitante">Solicitante</option>
                     <option value="usuario">Usuário</option>
                     <option value="gestor">Gestor</option>
                     <option value="master">Master</option>
@@ -1143,6 +1155,7 @@ function UsuariosAdmin() {
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   )
 }
