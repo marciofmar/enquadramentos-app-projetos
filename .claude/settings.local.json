@@ -32,7 +32,8 @@
       "Bash(npx tsc --noEmit --pretty)",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f \"supabase/migrations/20260320_140000_admin_create_user_function.sql\")",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \":*)",
-      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres --set=client_encoding=UTF8 -c \":*)"
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres --set=client_encoding=UTF8 -c \":*)",
+      "Bash(grep -l \"CREATE TABLE.*atividade\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)"
     ]
   }
 }

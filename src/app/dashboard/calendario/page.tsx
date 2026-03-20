@@ -3,9 +3,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink, Edit3, Save } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, X, ExternalLink, Edit3, Save, Plus, Trash2, Loader2 } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
+import RegisterGestorModal from '@/components/RegisterGestorModal'
 
 interface CalendarItem {
   id: number
@@ -113,6 +114,14 @@ const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
 const MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const DAY_NAMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 
+const STATUS_ATIVIDADE: Record<string, { label: string }> = {
+  aberta: { label: 'Aberta' },
+  em_andamento: { label: 'Em andamento' },
+  aguardando: { label: 'Aguardando' },
+  resolvida: { label: 'Resolvida' },
+  cancelada: { label: 'Cancelada' },
+}
+
 export default function CalendarioPage() {
   const [items, setItems] = useState<CalendarItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -142,6 +151,23 @@ export default function CalendarioPage() {
   const [configs, setConfigs] = useState<Record<string, string>>({})
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
 
+  // Raw project data for create modal
+  const [rawProjetos, setRawProjetos] = useState<any[]>([])
+
+  // Create activity modal
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createDate, setCreateDate] = useState('')
+  const [createStep, setCreateStep] = useState<1 | 2 | 3>(1)
+  const [createProjetoId, setCreateProjetoId] = useState<number | null>(null)
+  const [createEntregaId, setCreateEntregaId] = useState<number | null>(null)
+  const [createForm, setCreateForm] = useState({
+    nome: '', descricao: '', status: 'aberta', motivo_status: '',
+    responsavel_atividade_id: '', participantes: [] as any[]
+  })
+  const [createSaving, setCreateSaving] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [showGestorModal, setShowGestorModal] = useState(false)
+
   // Date editing
   const [editingDate, setEditingDate] = useState(false)
   const [newDate, setNewDate] = useState('')
@@ -169,12 +195,12 @@ export default function CalendarioPage() {
         .order('numero'),
       supabase.from('setores').select('id, codigo, nome_completo').order('codigo'),
       supabase.from('projetos')
-        .select(`id, nome, setor_lider_id, setor_lider:setor_lider_id(codigo, nome_completo),
+        .select(`id, nome, setor_lider_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
           entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas, responsavel_entrega_id,
-            entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
+            entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo)),
             atividades(id, nome, data_prevista, status, motivo_status, responsavel_atividade_id,
-              atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
+              atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo)))
           )`)
         .order('nome'),
       supabase.from('configuracoes').select('chave, valor'),
@@ -195,6 +221,7 @@ export default function CalendarioPage() {
     if (solsRes.data) setSolicitacoes(solsRes.data)
 
     if (projRes.data) {
+      setRawProjetos(projRes.data)
       const calItems: CalendarItem[] = []
 
       projRes.data.forEach((p: any) => {
@@ -416,6 +443,174 @@ export default function CalendarioPage() {
     })
   }
 
+  // === Create activity from calendar ===
+
+  const canCreateAtividade = profile && (isAdminOrMaster || (profile.role === 'gestor' && configs['proj_permitir_edicao'] !== 'false'))
+
+  // Projects eligible for the current user
+  const eligibleProjetos = useMemo(() => {
+    if (!profile) return []
+    if (isAdminOrMaster) return rawProjetos
+    if (profile.role !== 'gestor') return []
+    return rawProjetos.filter((p: any) => {
+      if (p.setor_lider_id === profile.setor_id) return true
+      return (p.entregas || []).some((e: any) => {
+        if ((e.entrega_participantes || []).some((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id === profile.setor_id)) return true
+        return (e.atividades || []).some((a: any) =>
+          (a.atividade_participantes || []).some((ap: any) => ap.tipo_participante === 'setor' && ap.setor_id === profile.setor_id)
+        )
+      })
+    })
+  }, [rawProjetos, profile, isAdminOrMaster])
+
+  // Entregas eligible for the selected project
+  const eligibleEntregas = useMemo(() => {
+    if (!createProjetoId || !profile) return []
+    const proj = rawProjetos.find((p: any) => p.id === createProjetoId)
+    if (!proj) return []
+    if (isAdminOrMaster || proj.setor_lider_id === profile.setor_id) return proj.entregas || []
+    return (proj.entregas || []).filter((e: any) =>
+      (e.entrega_participantes || []).some((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id === profile.setor_id)
+    )
+  }, [rawProjetos, createProjetoId, profile, isAdminOrMaster])
+
+  // Selected project/entrega data for the form
+  const createProjeto = createProjetoId ? rawProjetos.find((p: any) => p.id === createProjetoId) : null
+  const createEntrega = createEntregaId && createProjeto ? (createProjeto.entregas || []).find((e: any) => e.id === createEntregaId) : null
+
+  function handleDayDoubleClick(dateKey: string) {
+    if (!canCreateAtividade) return
+    setCreateDate(dateKey)
+    setCreateStep(1)
+    setCreateProjetoId(null)
+    setCreateEntregaId(null)
+    setCreateForm({ nome: '', descricao: '', status: 'aberta', motivo_status: '', responsavel_atividade_id: '', participantes: [] })
+    setCreateError('')
+    setShowCreateModal(true)
+  }
+
+  function handleSelectProjeto(projetoId: number) {
+    setCreateProjetoId(projetoId)
+    setCreateEntregaId(null)
+    setCreateStep(2)
+  }
+
+  function handleSelectEntrega(entregaId: number) {
+    setCreateEntregaId(entregaId)
+    setCreateForm({ nome: '', descricao: '', status: 'aberta', motivo_status: '', responsavel_atividade_id: '', participantes: [] })
+    setCreateError('')
+    setCreateStep(3)
+  }
+
+  function updateCreateParticipante(idx: number, field: string, value: any) {
+    setCreateForm(prev => {
+      const parts = [...prev.participantes]
+      parts[idx] = { ...parts[idx], [field]: value }
+      return { ...prev, participantes: parts }
+    })
+  }
+
+  function removeCreateParticipante(idx: number) {
+    setCreateForm(prev => ({ ...prev, participantes: prev.participantes.filter((_: any, i: number) => i !== idx) }))
+  }
+
+  function addCreateParticipante() {
+    setCreateForm(prev => ({ ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }] }))
+  }
+
+  function pKeyCreate(p: any) {
+    return p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante
+  }
+
+  async function saveCreateAtividade() {
+    setCreateError('')
+
+    if (!createEntrega || !createProjeto) { setCreateError('Selecione projeto e entrega.'); return }
+
+    // Validações de campos obrigatórios
+    if (!createForm.nome.trim()) { setCreateError('Preencha o nome da atividade.'); return }
+    if (!createForm.descricao.trim()) { setCreateError('Preencha a descrição da atividade.'); return }
+
+    // Validações de data
+    if (createDate && createEntrega.data_final_prevista && createDate > createEntrega.data_final_prevista) {
+      setCreateError(`A data da atividade não pode ser posterior à quinzena da entrega (${createEntrega.data_final_prevista}).`)
+      return
+    }
+    if (createDate && createProjeto.data_inicio && createDate < createProjeto.data_inicio) {
+      setCreateError(`A data da atividade não pode ser anterior à data de início do projeto (${createProjeto.data_inicio}).`)
+      return
+    }
+
+    // Validações de participantes
+    const allP = createForm.participantes || []
+    for (const p of allP) {
+      if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
+        setCreateError('Preencha o papel de todos os participantes.')
+        return
+      }
+    }
+    const validP = allP.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
+
+    // Participantes subconjunto da entrega
+    const entregaKeys = new Set((createEntrega.entrega_participantes || []).map((ep: any) =>
+      ep.tipo_participante === 'setor' ? `s_${ep.setor_id}` : ep.tipo_participante))
+    for (const ap of validP) {
+      const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
+      if (!entregaKeys.has(apKey)) {
+        setCreateError('Esta atividade inclui um participante que não está na entrega. Remova-o ou adicione-o à entrega primeiro.')
+        return
+      }
+    }
+
+    // Sem duplicados
+    const pKeys = validP.map((p: any) => pKeyCreate(p))
+    if (new Set(pKeys).size !== pKeys.length) {
+      setCreateError('Há participantes duplicados nesta atividade.')
+      return
+    }
+
+    setCreateSaving(true)
+
+    const novosDados = {
+      nome: createForm.nome.trim(),
+      descricao: createForm.descricao.trim(),
+      entrega_id: createEntregaId,
+      data_prevista: createDate || null,
+      status: createForm.status,
+      motivo_status: createForm.motivo_status || null,
+      responsavel_atividade_id: createForm.responsavel_atividade_id || null,
+    }
+
+    const { data: newAtiv, error } = await supabase.from('atividades').insert(novosDados).select().single()
+    if (error) { setCreateError(error.message); setCreateSaving(false); return }
+
+    await auditLog('create', 'atividade', newAtiv.id, null, novosDados)
+
+    // Insert participantes
+    if (validP.length > 0) {
+      const { error: insErr } = await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
+        atividade_id: newAtiv.id,
+        setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+        tipo_participante: p.tipo_participante, papel: p.papel.trim()
+      })))
+      if (insErr) { setCreateError(`Erro ao salvar participantes: ${insErr.message}`); setCreateSaving(false); return }
+    }
+
+    // Status coherence: se entrega em status terminal e nova atividade não-terminal → reverter
+    const statusNaoTerminal = !['resolvida', 'cancelada'].includes(createForm.status)
+    const entregaTerminal = createEntrega.status === 'resolvida' || createEntrega.status === 'cancelada'
+    if (entregaTerminal && statusNaoTerminal) {
+      await supabase.from('entregas').update({ status: 'em_andamento' }).eq('id', createEntregaId)
+      await auditLog('update', 'entrega', createEntregaId!, { status: createEntrega.status }, { status: 'em_andamento' })
+      alert(`O status da entrega "${createEntrega.nome}" foi alterado para "Em andamento" pois foi adicionada uma nova atividade.`)
+    }
+
+    setCreateSaving(false)
+    setShowCreateModal(false)
+    alert('Atividade criada com sucesso!')
+    loadAll()
+  }
+
   async function saveDate(item: CalendarItem) {
     // Não houve alteração
     if (newDate === item.data) { setEditingDate(false); return }
@@ -615,8 +810,9 @@ export default function CalendarioPage() {
 
               return (
                 <div key={i}
+                  onDoubleClick={() => day.isCurrentMonth && handleDayDoubleClick(key)}
                   className={`min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 p-1 transition-colors
-                    ${!day.isCurrentMonth ? 'bg-gray-50' : ''}
+                    ${!day.isCurrentMonth ? 'bg-gray-50' : canCreateAtividade ? 'cursor-pointer' : ''}
                     ${isToday ? 'ring-2 ring-inset ring-orange-400' : ''}`}>
                   <div className={`text-xs font-medium mb-1 ${!day.isCurrentMonth ? 'text-gray-300' : isToday ? 'text-orange-600 font-bold' : 'text-gray-600'}`}>
                     {day.date.getDate()}
@@ -664,7 +860,9 @@ export default function CalendarioPage() {
 
               return (
                 <div key={i}
+                  onDoubleClick={() => handleDayDoubleClick(key)}
                   className={`min-h-[200px] md:min-h-[300px] border-r border-gray-100 p-1.5
+                    ${canCreateAtividade ? 'cursor-pointer' : ''}
                     ${isToday ? 'ring-2 ring-inset ring-orange-400' : ''}`}>
                   <div className="overflow-y-auto max-h-[280px] space-y-1">
                     {dayItems.map(item => (
@@ -879,6 +1077,280 @@ export default function CalendarioPage() {
           </div>
         </div>
       )}
+
+      {/* Create activity modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !createSaving && setShowCreateModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+
+            {/* Modal header */}
+            <div className="px-5 py-4 border-b border-gray-200 bg-blue-50 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Nova Atividade</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {(() => {
+                      const [y, m, d] = createDate.split('-').map(Number)
+                      return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+                    })()}
+                  </p>
+                </div>
+                <button onClick={() => !createSaving && setShowCreateModal(false)} className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 mt-3">
+                {[1, 2, 3].map(step => (
+                  <div key={step} className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      createStep === step ? 'bg-blue-500 text-white' : createStep > step ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                    }`}>{step}</div>
+                    <span className={`text-xs ${createStep === step ? 'text-blue-700 font-medium' : 'text-gray-400'}`}>
+                      {step === 1 ? 'Projeto' : step === 2 ? 'Entrega' : 'Atividade'}
+                    </span>
+                    {step < 3 && <ChevronRight size={12} className="text-gray-300" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div className="p-5 space-y-4">
+              {createError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                  {createError}
+                </div>
+              )}
+
+              {/* Step 1: Select project */}
+              {createStep === 1 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Selecione o projeto</label>
+                  {eligibleProjetos.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">Nenhum projeto disponível para o seu setor.</p>
+                  ) : (
+                    <select
+                      className="input-field"
+                      value=""
+                      onChange={e => e.target.value && handleSelectProjeto(parseInt(e.target.value))}
+                    >
+                      <option value="">Selecione...</option>
+                      {eligibleProjetos.map((p: any) => (
+                        <option key={p.id} value={p.id}>{p.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: Select entrega */}
+              {createStep === 2 && (
+                <div>
+                  <button onClick={() => { setCreateStep(1); setCreateProjetoId(null) }}
+                    className="text-xs text-blue-500 hover:text-blue-700 mb-2 flex items-center gap-1">
+                    <ChevronLeft size={12} /> Voltar
+                  </button>
+                  <p className="text-xs text-gray-500 mb-1">Projeto: <span className="font-medium text-gray-700">{createProjeto?.nome}</span></p>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Selecione a entrega</label>
+                  {eligibleEntregas.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">Nenhuma entrega disponível neste projeto.</p>
+                  ) : (
+                    <select
+                      className="input-field"
+                      value=""
+                      onChange={e => e.target.value && handleSelectEntrega(parseInt(e.target.value))}
+                    >
+                      <option value="">Selecione...</option>
+                      {eligibleEntregas.map((e: any) => (
+                        <option key={e.id} value={e.id}>{e.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Step 3: Activity form */}
+              {createStep === 3 && createEntrega && createProjeto && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setCreateStep(2); setCreateEntregaId(null) }}
+                      className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                      <ChevronLeft size={12} /> Voltar
+                    </button>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-0.5">
+                    <p>Projeto: <span className="font-medium text-gray-700">{createProjeto.nome}</span></p>
+                    <p>Entrega: <span className="font-medium text-gray-700">{createEntrega.nome}</span></p>
+                  </div>
+
+                  {/* Nome */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome da atividade *</label>
+                    <input type="text" value={createForm.nome}
+                      onChange={e => setCreateForm(prev => ({ ...prev, nome: e.target.value }))}
+                      placeholder="Nome da atividade"
+                      className="input-field text-sm" disabled={createSaving} />
+                  </div>
+
+                  {/* Descrição */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Descrição *</label>
+                    <input type="text" value={createForm.descricao}
+                      onChange={e => setCreateForm(prev => ({ ...prev, descricao: e.target.value }))}
+                      placeholder="Descrição da atividade"
+                      className="input-field text-sm" disabled={createSaving} />
+                  </div>
+
+                  {/* Responsável */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                    <UserAutocompleteSelect
+                      value={createForm.responsavel_atividade_id || null}
+                      onChange={val => setCreateForm(prev => ({ ...prev, responsavel_atividade_id: val || '' }))}
+                      users={eligibleUsers}
+                      placeholder="Selecione..."
+                      disabled={createSaving}
+                      onRegisterNew={() => setShowGestorModal(true)}
+                    />
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select value={createForm.status}
+                      onChange={e => setCreateForm(prev => ({ ...prev, status: e.target.value }))}
+                      className="input-field text-sm" disabled={createSaving}>
+                      {Object.entries(STATUS_ATIVIDADE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Data */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Data prevista <span className="text-gray-400 font-normal">(prazo para conclusão)</span>
+                    </label>
+                    <input type="date" value={createDate}
+                      onChange={e => setCreateDate(e.target.value)}
+                      min={createProjeto.data_inicio || undefined}
+                      max={createEntrega.data_final_prevista || undefined}
+                      className="input-field text-sm" disabled={createSaving} />
+                    {createEntrega.data_final_prevista && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Limite da entrega: {(() => {
+                          const [y, m, d] = createEntrega.data_final_prevista.split('-').map(Number)
+                          return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+                        })()}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Motivo (se status ≠ aberta) */}
+                  {createForm.status !== 'aberta' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Motivo do status</label>
+                      <input type="text" value={createForm.motivo_status}
+                        onChange={e => setCreateForm(prev => ({ ...prev, motivo_status: e.target.value }))}
+                        placeholder="Motivo..."
+                        className="input-field text-sm" disabled={createSaving} />
+                    </div>
+                  )}
+
+                  {/* Participantes */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">Participantes</label>
+                      <button type="button" onClick={addCreateParticipante}
+                        disabled={createSaving}
+                        className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 disabled:opacity-50">
+                        <Plus size={12} /> Participante
+                      </button>
+                    </div>
+                    {createForm.participantes.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Nenhum participante adicionado.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {createForm.participantes.map((p: any, idx: number) => {
+                          const usedKeys = new Set(createForm.participantes.filter((_: any, i: number) => i !== idx).map(pKeyCreate))
+                          const entregaParts = createEntrega.entrega_participantes || []
+                          return (
+                            <div key={idx} className="flex gap-2 items-start">
+                              <select
+                                value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
+                                onChange={ev => {
+                                  const v = ev.target.value
+                                  if (v === 'externo_subsegop' || v === 'externo_sedec') {
+                                    updateCreateParticipante(idx, 'tipo_participante', v)
+                                    updateCreateParticipante(idx, 'setor_id', null)
+                                  } else {
+                                    updateCreateParticipante(idx, 'tipo_participante', 'setor')
+                                    updateCreateParticipante(idx, 'setor_id', parseInt(v) || null)
+                                  }
+                                }}
+                                className="input-field text-xs flex-1" disabled={createSaving}>
+                                <option value="">Participante...</option>
+                                {entregaParts.map((ep: any) => {
+                                  if (ep.tipo_participante === 'setor' && ep.setor_id) {
+                                    const s = setores.find((ss: any) => ss.id === ep.setor_id)
+                                    const k = `s_${ep.setor_id}`
+                                    return <option key={k} value={ep.setor_id} disabled={usedKeys.has(k)}>
+                                      {s?.codigo || 'Setor'}{usedKeys.has(k) ? ' (já)' : ''}
+                                    </option>
+                                  } else {
+                                    const label = ep.tipo_participante === 'externo_subsegop' ? 'Ext. SUBSEGOP' : 'Ext. SEDEC'
+                                    return <option key={ep.tipo_participante} value={ep.tipo_participante} disabled={usedKeys.has(ep.tipo_participante)}>
+                                      {label}{usedKeys.has(ep.tipo_participante) ? ' (já)' : ''}
+                                    </option>
+                                  }
+                                })}
+                                {entregaParts.length === 0 && <option disabled>Sem participantes na entrega</option>}
+                              </select>
+                              <input type="text" value={p.papel || ''}
+                                onChange={ev => updateCreateParticipante(idx, 'papel', ev.target.value)}
+                                placeholder="Papel na atividade"
+                                className="input-field text-xs flex-1" disabled={createSaving} />
+                              <button type="button" onClick={() => removeCreateParticipante(idx)}
+                                disabled={createSaving}
+                                className="text-red-400 hover:text-red-600 mt-2 disabled:opacity-50">
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                    <button onClick={() => setShowCreateModal(false)} disabled={createSaving}
+                      className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
+                      Cancelar
+                    </button>
+                    <button onClick={saveCreateAtividade} disabled={createSaving}
+                      className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-60 transition-colors flex items-center gap-2">
+                      {createSaving && <Loader2 size={14} className="animate-spin" />}
+                      Cadastrar Atividade
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RegisterGestorModal */}
+      <RegisterGestorModal
+        isOpen={showGestorModal}
+        onClose={() => setShowGestorModal(false)}
+        onSuccess={(newUser) => {
+          setEligibleUsers(prev => [...prev, { id: newUser.id, nome: newUser.nome }].sort((a, b) => a.nome.localeCompare(b.nome)))
+          setCreateForm(prev => ({ ...prev, responsavel_atividade_id: newUser.id }))
+          setShowGestorModal(false)
+        }}
+        setores={setores}
+      />
     </div>
   )
 }
