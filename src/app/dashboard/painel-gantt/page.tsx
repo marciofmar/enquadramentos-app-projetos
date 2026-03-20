@@ -56,6 +56,7 @@ export default function PainelGanttPage() {
   /* Refs para sincronização de scroll horizontal */
   const timelineRef = useRef<HTMLDivElement>(null)
   const timelineHeaderRef = useRef<HTMLDivElement>(null)
+  const popupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /* ─── Carregamento de dados ─── */
   useEffect(() => {
@@ -281,12 +282,18 @@ export default function PainelGanttPage() {
     }
   }, [loading, toX, now])
 
-  /* ─── Popup handlers ─── */
+  /* ─── Popup handlers (com delay para permitir interação com o popup) ─── */
   const showPopup = useCallback((type: 'projeto' | 'entrega' | 'atividade', data: any, e: React.MouseEvent) => {
+    if (popupTimeoutRef.current) { clearTimeout(popupTimeoutRef.current); popupTimeoutRef.current = null }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     setPopup({ type, data, x: rect.right + 8, y: rect.top })
   }, [])
-  const hidePopup = useCallback(() => setPopup(null), [])
+  const hidePopup = useCallback(() => {
+    popupTimeoutRef.current = setTimeout(() => setPopup(null), 150)
+  }, [])
+  const cancelHidePopup = useCallback(() => {
+    if (popupTimeoutRef.current) { clearTimeout(popupTimeoutRef.current); popupTimeoutRef.current = null }
+  }, [])
 
   /* ─── Colapsar/expandir ─── */
   function toggleCollapse(pid: number) {
@@ -436,7 +443,7 @@ export default function PainelGanttPage() {
       )}
 
       {/* Popup */}
-      {popup && <PopupCard popup={popup} onClose={hidePopup} />}
+      {popup && <PopupCard popup={popup} onClose={hidePopup} onEnter={cancelHidePopup} />}
     </div>
   )
 
@@ -622,7 +629,7 @@ function getEntregaStartDate(entrega: any, projetoDataInicio: string | null, fal
 
 /* ───────────────────── Componente Popup ───────────────────── */
 
-function PopupCard({ popup, onClose }: { popup: { type: string; data: any; x: number; y: number }; onClose: () => void }) {
+function PopupCard({ popup, onClose, onEnter }: { popup: { type: string; data: any; x: number; y: number }; onClose: () => void; onEnter: () => void }) {
   const maxW = 380
   const maxH = 350
 
@@ -633,7 +640,7 @@ function PopupCard({ popup, onClose }: { popup: { type: string; data: any; x: nu
   return (
     <div className="fixed z-[100] bg-white rounded-lg shadow-xl border border-gray-200 p-4 text-xs space-y-1.5 overflow-y-auto"
          style={{ left: x, top: y, maxWidth: maxW, maxHeight: maxH }}
-         onMouseEnter={e => e.stopPropagation()}
+         onMouseEnter={onEnter}
          onMouseLeave={onClose}>
       {popup.type === 'projeto' && <ProjectPopup data={popup.data} />}
       {popup.type === 'entrega' && <EntregaPopup data={popup.data} />}
