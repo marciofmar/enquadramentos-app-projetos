@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, Bell } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, Bell, AlertCircle } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true)
   const [pendingSolicitacoes, setPendingSolicitacoes] = useState(0)
   const [pendingSolicitantes, setPendingSolicitantes] = useState(0)
+  const [urgentActivities, setUrgentActivities] = useState(0)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -28,6 +29,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       if (data) {
         setProfile(data as any)
+
+        // Fetch urgent activities for this user
+        const now = new Date()
+        now.setHours(0,0,0,0)
+        const in7Days = new Date(now)
+        in7Days.setDate(in7Days.getDate() + 7)
+        const nowStr = now.toISOString().split('T')[0]
+        const limitStr = in7Days.toISOString().split('T')[0]
+        
+        const { count } = await supabase.from('atividades')
+          .select('*', { count: 'exact', head: true })
+          .eq('responsavel_atividade_id', data.id)
+          .neq('status', 'resolvida')
+          .neq('status', 'cancelada')
+          .gte('data_prevista', nowStr)
+          .lte('data_prevista', limitStr)
+          
+        if (count) setUrgentActivities(count)
+
         // Guarda: se solicitante, redirecionar para /pendente
         if (data.role === 'solicitante') {
           router.push('/pendente')
@@ -176,6 +196,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
       </header>
+
+      {urgentActivities > 0 && (
+        <div onClick={() => router.push('/dashboard/projetos')} 
+          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner cursor-pointer transition-colors z-40 relative">
+          <AlertCircle size={18} className="animate-pulse shrink-0" />
+          <span className="font-medium text-center">
+            Atenção! Você é responsável por {urgentActivities} atividade{urgentActivities > 1 ? 's' : ''} com prazo para os próximos 7 dias.
+          </span>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}

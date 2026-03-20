@@ -10,7 +10,7 @@ import type { Profile } from '@/lib/types'
 type AdminTab = 'observacoes' | 'conteudo' | 'usuarios' | 'setores' | 'config' | 'solicitacoes' | 'log'
 
 // Tabs acessíveis pelo perfil master (gestão de projetos)
-const MASTER_TABS: AdminTab[] = ['config', 'solicitacoes', 'log']
+const MASTER_TABS: AdminTab[] = ['usuarios', 'config', 'solicitacoes', 'log']
 
 export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>('observacoes')
@@ -71,7 +71,7 @@ export default function AdminPage() {
 
       {tab === 'observacoes' && <ObservacoesAdmin />}
       {tab === 'conteudo' && <ConteudoAdmin />}
-      {tab === 'usuarios' && <UsuariosAdmin />}
+      {tab === 'usuarios' && <UsuariosAdmin isMaster={isMaster} />}
       {tab === 'setores' && <SetoresAdmin />}
       {tab === 'config' && <ConfiguracoesAdmin isMaster={isMaster} />}
       {tab === 'solicitacoes' && <SolicitacoesAdmin />}
@@ -950,7 +950,7 @@ function FichaEditor({ ficha, saving, saved, onChange, onSave, onSaveMeta, onDel
 // USUÁRIOS
 // ============================================================
 
-function UsuariosAdmin() {
+function UsuariosAdmin({ isMaster = false }: { isMaster?: boolean }) {
   const [users, setUsers] = useState<any[]>([])
   const [setores, setSetores] = useState<any[]>([])
   const [setoresCadastro, setSetoresCadastro] = useState<any[]>([])
@@ -960,6 +960,7 @@ function UsuariosAdmin() {
   const [editEmailValue, setEditEmailValue] = useState('')
   const [savingUser, setSavingUser] = useState<string | null>(null)
   const [resetConfirm, setResetConfirm] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -1040,6 +1041,23 @@ function UsuariosAdmin() {
     setSavingUser(null)
   }
 
+  async function handleDeleteUser(userId: string) {
+    setSavingUser(userId)
+    const res = await fetch('/api/admin/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+    if (res.ok) {
+      setUsers(prev => prev.filter(u => u.id !== userId))
+      setDeleteConfirm(null)
+    } else {
+      const data = await res.json()
+      alert(`Erro: ${data.error}`)
+    }
+    setSavingUser(null)
+  }
+
   const pendingSolicitantes = users.filter(u => u.role === 'solicitante').length
 
   return (
@@ -1067,7 +1085,9 @@ function UsuariosAdmin() {
             {users.map(u => (
               <tr key={u.id} className={`hover:bg-gray-50 ${u.role === 'solicitante' ? 'bg-yellow-50/50' : ''}`}>
                 <td className="px-4 py-3">
-                  {editingNome === u.id ? (
+                  {isMaster ? (
+                    <span className="font-medium text-gray-800 text-left">{u.nome}</span>
+                  ) : editingNome === u.id ? (
                     <div className="flex items-center gap-1">
                       <input type="text" value={editNomeValue} onChange={e => setEditNomeValue(e.target.value)}
                         className="text-xs border border-gray-300 rounded px-2 py-1 w-36"
@@ -1105,15 +1125,15 @@ function UsuariosAdmin() {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <select value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
-                    className="text-xs border border-gray-200 rounded px-2 py-1">
+                  <select disabled={isMaster} value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
+                    className="text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-75 disabled:bg-gray-50">
                     <option value="">Sem setor</option>
                     {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
                   </select>
                 </td>
                 <td className="px-4 py-3">
-                  <select value={u.role} onChange={e => updateRole(u.id, e.target.value)}
-                    className={`text-xs font-medium rounded px-2 py-1 border ${
+                  <select disabled={isMaster} value={u.role} onChange={e => updateRole(u.id, e.target.value)}
+                    className={`text-xs font-medium rounded px-2 py-1 border disabled:opacity-75 ${
                       u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
                       u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
                       u.role === 'gestor' ? 'bg-blue-50 border-blue-200 text-blue-700' :
@@ -1128,24 +1148,46 @@ function UsuariosAdmin() {
                   </select>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    {u.senha_zerada && (
-                      <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Senha zerada</span>
+                  <div className="flex flex-col gap-1.5 items-start">
+                    {!isMaster && (
+                      <div className="flex items-center gap-2">
+                        {u.senha_zerada && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Senha zerada</span>
+                        )}
+                        {resetConfirm === u.id ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-gray-500">Zerar?</span>
+                            <button onClick={() => handleResetPassword(u.id)} disabled={savingUser === u.id}
+                              className="text-[10px] text-red-600 hover:text-red-800 font-medium">
+                              {savingUser === u.id ? '...' : 'Sim'}
+                            </button>
+                            <button onClick={() => setResetConfirm(null)}
+                              className="text-[10px] text-gray-400 hover:text-gray-600">Não</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setResetConfirm(u.id)}
+                            className="text-[10px] text-red-500 hover:text-red-700 font-medium whitespace-nowrap">
+                            Zerar Senha
+                          </button>
+                        )}
+                      </div>
                     )}
-                    {resetConfirm === u.id ? (
+
+                    {/* Excluir usuário */}
+                    {deleteConfirm === u.id ? (
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-gray-500">Confirmar?</span>
-                        <button onClick={() => handleResetPassword(u.id)} disabled={savingUser === u.id}
-                          className="text-[10px] text-red-600 hover:text-red-800 font-medium">
-                          {savingUser === u.id ? '...' : 'Sim'}
+                        <span className="text-[10px] text-gray-500">Excluir?</span>
+                        <button onClick={() => handleDeleteUser(u.id)} disabled={savingUser === u.id}
+                          className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-1">
+                          <Trash2 size={10} /> {savingUser === u.id ? '...' : 'Sim'}
                         </button>
-                        <button onClick={() => setResetConfirm(null)}
+                        <button onClick={() => setDeleteConfirm(null)}
                           className="text-[10px] text-gray-400 hover:text-gray-600">Não</button>
                       </div>
                     ) : (
-                      <button onClick={() => setResetConfirm(u.id)}
-                        className="text-[10px] text-red-500 hover:text-red-700 font-medium whitespace-nowrap">
-                        Zerar Senha
+                      <button onClick={() => setDeleteConfirm(u.id)}
+                        className="text-[10px] text-gray-400 hover:text-red-600 font-medium whitespace-nowrap flex items-center gap-1">
+                        <Trash2 size={12} /> Excluir usuário
                       </button>
                     )}
                   </div>
