@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, Bell, AlertCircle } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingSolicitacoes, setPendingSolicitacoes] = useState(0)
   const [pendingSolicitantes, setPendingSolicitantes] = useState(0)
   const [urgentActivities, setUrgentActivities] = useState(0)
+  const [urgentProjectIds, setUrgentProjectIds] = useState<number[]>([])
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -38,15 +39,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const nowStr = now.toISOString().split('T')[0]
         const limitStr = in7Days.toISOString().split('T')[0]
         
-        const { count } = await supabase.from('atividades')
-          .select('*', { count: 'exact', head: true })
+        const { data: urgentData, count } = await supabase.from('atividades')
+          .select('id, entregas!inner(projeto_id)', { count: 'exact' })
           .eq('responsavel_atividade_id', data.id)
           .neq('status', 'resolvida')
           .neq('status', 'cancelada')
           .gte('data_prevista', nowStr)
           .lte('data_prevista', limitStr)
-          
+
         if (count) setUrgentActivities(count)
+        if (urgentData && urgentData.length > 0) {
+          const pIds = Array.from(new Set(urgentData.map((a: any) => a.entregas?.projeto_id).filter(Boolean))) as number[]
+          setUrgentProjectIds(pIds)
+        }
 
         // Guarda: se solicitante, redirecionar para /pendente
         if (data.role === 'solicitante') {
@@ -129,6 +134,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
                 <CalendarDays size={15} /> Calendário
               </button>
+              <button onClick={() => router.push('/dashboard/painel-gantt')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <BarChart3 size={15} /> Painel Gantt
+              </button>
             </nav>
 
             <div className="flex items-center gap-4">
@@ -194,11 +203,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
             <CalendarDays size={13} /> Calendário
           </button>
+          <button onClick={() => router.push('/dashboard/painel-gantt')}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+            <BarChart3 size={13} /> Gantt
+          </button>
         </div>
       </header>
 
       {urgentActivities > 0 && (
-        <div onClick={() => router.push('/dashboard/projetos')} 
+        <div onClick={() => router.push(`/dashboard/projetos${urgentProjectIds.length > 0 ? `?alerta=${urgentProjectIds.join(',')}` : ''}`)}
           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner cursor-pointer transition-colors z-40 relative">
           <AlertCircle size={18} className="animate-pulse shrink-0" />
           <span className="font-medium text-center">
