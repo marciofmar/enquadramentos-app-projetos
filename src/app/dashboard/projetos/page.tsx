@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 
@@ -47,6 +47,12 @@ export default function ProjetosPage() {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [configs, setConfigs] = useState<Record<string, string>>({})
+  const searchParams = useSearchParams()
+  const alertaIds = useMemo(() => {
+    const raw = searchParams.get('alerta')
+    if (!raw) return new Set<number>()
+    return new Set(raw.split(',').map(Number).filter(n => !isNaN(n) && n > 0))
+  }, [searchParams])
 
   // Filters
   const [searchText, setSearchText] = useState('')
@@ -664,15 +670,21 @@ export default function ProjetosPage() {
               const pontKey = p.status_projeto !== 'em_andamento' ? p.status_projeto : p.pontualidade
               const pont = PONT_CONFIG[pontKey]
               const PontIcon = pont.icon
+              const isAlerta = alertaIds.has(p.id)
 
               if (viewMode === 'compact') {
                 return (
                   <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
-                    className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4`}>
+                    className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : ''}`}>
                     <div className="flex items-start justify-between gap-1 mb-1">
                       <h3 className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2 group-hover:line-clamp-none">
                         {p.nome}
                       </h3>
+                      {isAlerta && (
+                        <span className="shrink-0 flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white animate-pulse">
+                          <AlertCircle size={9} /> Prazo
+                        </span>
+                      )}
                     </div>
                     <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full ${pont.bg} ${pont.color}`}>
                       <PontIcon size={9} /> {pont.label}
@@ -699,12 +711,17 @@ export default function ProjetosPage() {
               // Normal view
               return (
                 <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
-                  className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4`}>
+                  className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : ''}`}>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="text-sm font-semibold text-gray-800 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
                       {p.nome}
                     </h3>
                     <div className="flex flex-col gap-1 shrink-0 items-end">
+                      {isAlerta && (
+                        <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-500 text-white animate-pulse">
+                          <AlertCircle size={10} /> Prazo próximo
+                        </span>
+                      )}
                       <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${pont.bg} ${pont.color}`}>
                         <PontIcon size={11} /> {pont.label}
                       </span>

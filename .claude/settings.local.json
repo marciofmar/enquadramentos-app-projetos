@@ -33,7 +33,13 @@
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f \"supabase/migrations/20260320_140000_admin_create_user_function.sql\")",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \":*)",
       "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres --set=client_encoding=UTF8 -c \":*)",
-      "Bash(grep -l \"CREATE TABLE.*atividade\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)"
+      "Bash(grep -l \"CREATE TABLE.*atividade\" \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\supabase\\\\migrations\"/*.sql)",
+      "Bash(pg_dump \"postgresql://postgres.kfwpakagsngonlsaolsb:%40Ictdec2026%23@aws-1-sa-east-1.pooler.supabase.com:5432/postgres\" --data-only --schema=public --schema=auth -T auth.schema_migrations -T auth.audit_log_entries -T auth.refresh_tokens -T auth.sessions -T auth.mfa_amr_claims -T auth.mfa_challenges -T auth.mfa_factors -T auth.sso_providers -T auth.sso_domains -T auth.saml_providers -T auth.saml_relay_states -T auth.flow_state -T auth.one_time_tokens)",
+      "Bash(pg_dump \"postgresql://postgres.lqcmieoasiyhgffgbpem:%40Ictdec2026%23@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" --data-only --table=public.projetos --table=public.entregas --table=public.atividades --table=public.entrega_participantes --table=public.atividade_participantes --table=public.projeto_acoes --table=public.profiles --table=public.setores)",
+      "Bash(psql \"postgresql://postgres:postgres@127.0.0.1:54322/postgres\" -c \":*)",
+      "Bash(psql \"postgresql://postgres:postgres@127.0.0.1:54322/postgres\" -c \"SET session_replication_role = replica;\" -f C:/Users/marci/projetos/enquadramentos-app-projetos/supabase/prod_data.sql)",
+      "Bash(pg_dump \"postgresql://postgres.lqcmieoasiyhgffgbpem:%40Ictdec2026%23@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" --data-only --table=public.configuracoes --table=public.ficha_setores --table=public.observacoes --table=public.panoramico_setores --table=public.audit_log --table=public.solicitacoes_alteracao)",
+      "Bash(psql \"postgresql://postgres:postgres@127.0.0.1:54322/postgres\" -c \"SET session_replication_role = replica;\" -f C:/Users/marci/projetos/enquadramentos-app-projetos/supabase/prod_aux.sql)"
     ]
   }
 }
