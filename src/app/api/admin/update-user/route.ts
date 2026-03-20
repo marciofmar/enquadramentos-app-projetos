@@ -13,15 +13,18 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient()
     const { data: callerProfile } = await adminClient
       .from('profiles').select('role').eq('id', user.id).single()
-    if (!callerProfile || callerProfile.role !== 'admin') {
+    if (!callerProfile || (callerProfile.role !== 'admin' && callerProfile.role !== 'master')) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
 
     const { userId, nome, email } = await request.json()
     if (!userId) return NextResponse.json({ error: 'userId obrigatório' }, { status: 400 })
 
-    // Atualizar nome no profile (via PostgREST com service role)
+    // Atualizar nome no profile (via PostgREST com service role) - Apenas Admin
     if (nome !== undefined) {
+      if (callerProfile.role !== 'admin') {
+        return NextResponse.json({ error: 'Apenas admin pode editar nome' }, { status: 403 })
+      }
       const { error } = await adminClient
         .from('profiles').update({ nome }).eq('id', userId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -125,7 +125,7 @@ export default function ProjetoDetalhePage() {
     const { data: proj } = await supabase.from('projetos')
       .select(`*, responsavel_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
-        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id,
+        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_inicio, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
           atividades(id, nome, descricao, data_prevista, status, motivo_status, responsavel_atividade_id,
             atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
@@ -371,6 +371,7 @@ export default function ProjetoDetalhePage() {
     setEditForm({
       nome: e.nome, descricao: e.descricao, criterios_aceite: e.criterios_aceite || '',
       dependencias_criticas: e.dependencias_criticas || '',
+      data_inicio: e.data_inicio || '',
       data_final_prevista: e.data_final_prevista || '', status: e.status, motivo_status: e.motivo_status || '',
       orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
       responsavel_entrega_id: e.responsavel_entrega_id || '',
@@ -452,6 +453,7 @@ export default function ProjetoDetalhePage() {
         nome: editForm.nome, descricao: editForm.descricao,
         criterios_aceite: editForm.criterios_aceite?.trim() || null,
         dependencias_criticas: editForm.dependencias_criticas || null,
+        data_inicio: editForm.data_inicio || null,
         data_final_prevista: editForm.data_final_prevista || null,
         status: editForm.status, motivo_status: editForm.motivo_status || null,
         orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
@@ -470,6 +472,7 @@ export default function ProjetoDetalhePage() {
       nome: editForm.nome, descricao: editForm.descricao,
       criterios_aceite: editForm.criterios_aceite?.trim() || null,
       dependencias_criticas: editForm.dependencias_criticas || null,
+      data_inicio: editForm.data_inicio || null,
       data_final_prevista: editForm.data_final_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
       orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
@@ -478,6 +481,7 @@ export default function ProjetoDetalhePage() {
     const anteriorE = {
       nome: entrega?.nome, descricao: entrega?.descricao,
       criterios_aceite: entrega?.criterios_aceite, dependencias_criticas: entrega?.dependencias_criticas,
+      data_inicio: entrega?.data_inicio,
       data_final_prevista: entrega?.data_final_prevista,
       status: entrega?.status, motivo_status: entrega?.motivo_status,
       orgao_responsavel_setor_id: entrega?.orgao_responsavel_setor_id,
@@ -525,6 +529,7 @@ export default function ProjetoDetalhePage() {
     if (editingAtividade !== null) setEditingAtividade(null)
     setNewEntregaForm({
       nome: '', descricao: '', criterios_aceite: '', dependencias_criticas: '',
+      data_inicio: '',
       data_final_prevista: '', status: 'aberta', motivo_status: '',
       orgao_responsavel_setor_id: null, responsavel_entrega_id: '',
       participantes: []
@@ -561,6 +566,7 @@ export default function ProjetoDetalhePage() {
       descricao: newEntregaForm.descricao?.trim() || '',
       criterios_aceite: newEntregaForm.criterios_aceite?.trim() || null,
       dependencias_criticas: newEntregaForm.dependencias_criticas?.trim() || null,
+      data_inicio: newEntregaForm.data_inicio || null,
       data_final_prevista: newEntregaForm.data_final_prevista || null,
       status: newEntregaForm.status,
       motivo_status: newEntregaForm.motivo_status?.trim() || null,
@@ -1259,6 +1265,12 @@ export default function ProjetoDetalhePage() {
                       {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   </div>
+                  <div className="w-[140px]">
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Data Início (Op.)</label>
+                    <input type="date" value={newEntregaForm.data_inicio || ''}
+                      onChange={ev => setNewEntregaForm({ ...newEntregaForm, data_inicio: ev.target.value })}
+                      className="w-full input-field text-xs text-gray-500" />
+                  </div>
                   <div className="w-[180px]">
                     <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
                     <select value={newEntregaForm.data_final_prevista}
@@ -1453,6 +1465,14 @@ export default function ProjetoDetalhePage() {
                               }`}>
                               {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                             </select>
+                          </div>
+
+                          <div className="w-[140px]">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Data Início (Op.)</label>
+                            <input type="date" value={editForm.data_inicio || ''}
+                              onChange={ev => setEditForm({ ...editForm, data_inicio: ev.target.value })}
+                              disabled={!canEditDataEntrega}
+                              className="w-full input-field text-xs text-gray-500" />
                           </div>
 
                           {/* Quinzena — compacto */}
@@ -1988,6 +2008,9 @@ function GanttChart({ entregas, dataInicio }: { entregas: any[]; dataInicio?: st
   // - Se não houver atividades mas houver data de início do projeto: data de início do projeto
   // - Senão: hoje
   const getStart = (e: any) => {
+    if (e.data_inicio) {
+      return new Date(e.data_inicio + 'T00:00:00')
+    }
     const ativDates = (e.atividades || [])
       .filter((a: any) => a.data_prevista)
       .map((a: any) => new Date(a.data_prevista + 'T00:00:00').getTime())

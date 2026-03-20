@@ -27,6 +27,11 @@ interface ProjetoCard {
   responsavel_id: string | null
   responsaveis_entrega: string[]
   responsaveis_atividade: string[]
+  data_inicio: string | null
+  created_at: string
+  tie_entrega_inicio: string | null
+  tie_atividade: string | null
+  tie_entrega_final: string | null
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -50,6 +55,7 @@ export default function ProjetosPage() {
   const [setorFilter, setSetorFilter] = useState('')
   const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
   const [responsavelFilter, setResponsavelFilter] = useState('')
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(true)
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
@@ -68,8 +74,13 @@ export default function ProjetosPage() {
     // Profile
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (p) setProfile(p as any)
+      const { data: p } = await supabase.from('profiles').select('*, setores:setor_id(codigo)').eq('id', user.id).single()
+      if (p) {
+        setProfile(p as any)
+        if (p.role !== 'admin' && p.role !== 'master' && p.setores?.codigo) {
+           setSetorFilter(p.setores.codigo)
+        }
+      }
     }
 
     // Configs
@@ -204,8 +215,22 @@ export default function ProjetosPage() {
           .sort((a: any, b: any) => new Date(a.data_prevista).getTime() - new Date(b.data_prevista).getTime())
         if (ativFuturas.length > 0) proximaAtividade = { nome: ativFuturas[0].nome, data: ativFuturas[0].data_prevista }
 
-        // Status do projeto
+        // Status do projeto & Desempates de datas
         const entregas = p.entregas || []
+        
+        let minEntregaInicio = null
+        for (const e of entregas) {
+          if (e.data_inicio && (!minEntregaInicio || e.data_inicio < minEntregaInicio)) minEntregaInicio = e.data_inicio
+        }
+        let minAtivData = null
+        for (const a of todasAtividades) {
+          if (a.data_prevista && (!minAtivData || a.data_prevista < minAtivData)) minAtivData = a.data_prevista
+        }
+        let minEntregaFim = null
+        for (const e of entregas) {
+          if (e.data_final_prevista && (!minEntregaFim || e.data_final_prevista < minEntregaFim)) minEntregaFim = e.data_final_prevista
+        }
+
         let status_projeto: 'em_andamento' | 'concluido' | 'cancelado' = 'em_andamento'
         if (entregas.length > 0) {
           if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'cancelado'
@@ -236,6 +261,11 @@ export default function ProjetosPage() {
           responsavel_id: p.responsavel_id || null,
           responsaveis_entrega: Array.from(respEntregaSet),
           responsaveis_atividade: Array.from(respAtividadeSet),
+          data_inicio: p.data_inicio || null,
+          created_at: p.created_at,
+          tie_entrega_inicio: minEntregaInicio,
+          tie_atividade: minAtivData,
+          tie_entrega_final: minEntregaFim,
         }
       })
       setProjetos(cards)
@@ -280,12 +310,15 @@ export default function ProjetosPage() {
         const isRespAtividade = p.responsaveis_atividade.includes(responsavelFilter)
         if (!isLider && !isRespEntrega && !isRespAtividade) return false
       }
+      if (showIncompleteOnly) {
+        if (p.status_projeto !== 'em_andamento') return false
+      }
       return true
     })
-  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter])
+  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter, showIncompleteOnly])
 
   const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
-  const [viewMode, setViewMode] = useState<'normal' | 'compact'>('normal')
+  const [viewMode, setViewMode] = useState<'normal' | 'compact'>('compact')
 
   // Group projects by setor or status
   const STATUS_GROUP_LABELS: Record<string, { label: string; icon: any; color: string }> = {
@@ -297,10 +330,19 @@ export default function ProjetosPage() {
   const grouped = useMemo(() => {
     const groups: Record<string, ProjetoCard[]> = {}
     const sorted = [...filtered].sort((a, b) => {
-      if (!a.proxima_entrega && !b.proxima_entrega) return 0
-      if (!a.proxima_entrega) return 1
-      if (!b.proxima_entrega) return -1
-      return new Date(a.proxima_entrega.data).getTime() - new Date(b.proxima_entrega.data).getTime()
+      // 1. Sort by project start_date (ascending), projects without start_date go to the end
+      if (a.data_inicio && b.data_inicio) {
+        if (a.data_inicio !== b.data_inicio) return a.data_inicio.localeCompare(b.data_inicio)
+      } else if (a.data_inicio) {
+        return -1
+      } else if (b.data_inicio) {
+        return 1
+      }
+      
+      // If tied or both without start_date -> apply tie-breakers:
+      const aVal = a.tie_entrega_inicio || a.tie_atividade || a.tie_entrega_final || a.created_at || '9999-12-31'
+      const bVal = b.tie_entrega_inicio || b.tie_atividade || b.tie_entrega_final || b.created_at || '9999-12-31'
+      return aVal.localeCompare(bVal)
     })
 
     if (groupBy === 'setor') {
@@ -407,6 +449,17 @@ export default function ProjetosPage() {
               Compacto
             </button>
           </div>
+          {/* Foco em andamento */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button onClick={() => setShowIncompleteOnly(true)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${showIncompleteOnly ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Em andamento
+            </button>
+            <button onClick={() => setShowIncompleteOnly(false)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${!showIncompleteOnly ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Todos
+            </button>
+          </div>
         </div>
       </div>
 
@@ -455,12 +508,34 @@ export default function ProjetosPage() {
             })()}
           </div>
 
+          {/* Projetos por AE (Scrollable/Horizontal) */}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Projetos por Ação Estratégica</h3>
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+              {acoes.map(ae => {
+                const count = projetos.filter(p => p.acoes.some((pa: any) => pa.numero === ae.numero)).length
+                if (count === 0) return null
+                return (
+                  <div key={ae.numero} className="flex flex-col flex-shrink-0 bg-white hover:bg-gray-50 border border-gray-200 hover:border-sedec-200 hover:shadow-sm transition-all rounded-xl min-w-[160px] max-w-[180px] overflow-hidden cursor-default" title={ae.nome}>
+                    <div className="p-3 pb-2 flex-grow">
+                      <div className="text-[10px] font-bold text-sedec-500 mb-1 uppercase tracking-wider">AE {ae.numero}</div>
+                      <div className="text-xs text-gray-700 font-medium line-clamp-2 leading-snug">{ae.nome}</div>
+                    </div>
+                    <div className="bg-gray-50 border-t border-gray-100 px-3 py-2 flex items-center justify-between mt-auto">
+                      <span className="text-[10px] text-gray-500 uppercase font-medium">Projetos</span>
+                      <span className="text-lg font-bold text-sedec-600 leading-none">{count}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
           {/* Projetos por tipo de ação */}
           {(() => {
             const TIPOS = ['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração']
             const relevantes = projetos.filter(p => p.status_projeto !== 'cancelado')
             return (
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 mt-4">
                 <h3 className="text-sm font-semibold text-gray-600 mb-3">Projetos por tipo de ação</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                   {TIPOS.map(tipo => {
