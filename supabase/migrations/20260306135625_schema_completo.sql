@@ -52,6 +52,136 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
+CREATE OR REPLACE FUNCTION "public"."admin_confirm_user_email"("target_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+BEGIN
+  -- Esta função é chamada após signup quando email está desativado.
+  -- Não verifica admin pois é chamada pelo sistema (API route com service role).
+  UPDATE auth.users
+  SET email_confirmed_at = now(),
+      updated_at = now()
+  WHERE id = target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Usuário não encontrado: %', target_user_id;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_confirm_user_email"("target_user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."admin_create_user"("p_email" "text", "p_password" "text", "p_nome" "text", "p_setor_id" integer) RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+DECLARE
+  caller_role text;
+  new_user_id uuid;
+BEGIN
+  -- Verificar que o caller é gestor, master ou admin
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+  IF caller_role IS NULL OR caller_role NOT IN ('admin', 'master', 'gestor') THEN
+    RAISE EXCEPTION 'Sem permissão: apenas gestor, master ou admin pode criar usuários';
+  END IF;
+
+  -- Verificar se email já existe
+  IF EXISTS (SELECT 1 FROM auth.users WHERE email = lower(trim(p_email))) THEN
+    RAISE EXCEPTION 'Já existe um usuário com este email';
+  END IF;
+
+  -- Gerar novo UUID
+  new_user_id := gen_random_uuid();
+
+  -- Inserir em auth.users
+  -- IMPORTANTE: GoTrue exige que campos de token sejam '' (string vazia), não NULL.
+  -- Se forem NULL, GoTrue falha com "Scan error on column: converting NULL to string"
+  INSERT INTO auth.users (
+    id,
+    instance_id,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    aud,
+    role,
+    confirmation_token,
+    recovery_token,
+    email_change_token_new,
+    email_change,
+    created_at,
+    updated_at
+  ) VALUES (
+    new_user_id,
+    '00000000-0000-0000-0000-000000000000',
+    lower(trim(p_email)),
+    crypt(p_password, gen_salt('bf')),
+    now(),  -- auto-confirmar email
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('nome', p_nome, 'setor_id', p_setor_id),
+    'authenticated',
+    'authenticated',
+    '',   -- confirmation_token: string vazia, não NULL
+    '',   -- recovery_token: string vazia, não NULL
+    '',   -- email_change_token_new: string vazia, não NULL
+    '',   -- email_change: string vazia, não NULL
+    now(),
+    now()
+  );
+
+  -- O trigger handle_new_user() criará o profile automaticamente
+  -- Mas como ele cria com role='solicitante', precisamos atualizar para 'gestor'
+  UPDATE public.profiles
+  SET role = 'gestor',
+      senha_zerada = true,
+      reset_token = p_password,
+      nome = p_nome,
+      setor_id = p_setor_id
+  WHERE id = new_user_id;
+
+  RETURN new_user_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_create_user"("p_email" "text", "p_password" "text", "p_nome" "text", "p_setor_id" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."admin_create_user_identity"("p_user_id" "uuid", "p_email" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+BEGIN
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    p_user_id,
+    jsonb_build_object('sub', p_user_id::text, 'email', lower(trim(p_email))),
+    'email',
+    p_user_id::text,
+    now(),
+    now(),
+    now()
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_create_user_identity"("p_user_id" "uuid", "p_email" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."admin_delete_setor"("p_setor_id" integer, "p_transfer_to_id" integer DEFAULT NULL::integer) RETURNS json
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -109,6 +239,31 @@ $$;
 ALTER FUNCTION "public"."admin_delete_setor"("p_setor_id" integer, "p_transfer_to_id" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."admin_delete_user"("target_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Verificar que o caller é admin ou master
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+  IF caller_role IS NULL OR (caller_role != 'admin' AND caller_role != 'master') THEN
+    RAISE EXCEPTION 'Sem permissão: apenas admin ou master pode excluir usuários';
+  END IF;
+
+  DELETE FROM auth.users WHERE id = target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Usuário não encontrado: %', target_user_id;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_delete_user"("target_user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."admin_update_acao_campo"("acao_numero" "text", "campo" "text", "novo_valor" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $_$
@@ -153,6 +308,69 @@ $$;
 ALTER FUNCTION "public"."admin_update_observacao"("obs_id" integer, "novo_status" "text", "resposta" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."admin_update_user_email"("target_user_id" "uuid", "new_email" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Verificar que o caller é admin ou master
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+  IF caller_role IS NULL OR (caller_role != 'admin' AND caller_role != 'master') THEN
+    RAISE EXCEPTION 'Sem permissão: apenas admin ou master pode executar esta função';
+  END IF;
+
+  -- Atualizar email no auth.users
+  UPDATE auth.users
+  SET email = new_email,
+      updated_at = now()
+  WHERE id = target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Usuário não encontrado: %', target_user_id;
+  END IF;
+
+  -- Atualizar email no profiles também
+  UPDATE public.profiles
+  SET email = new_email
+  WHERE id = target_user_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_update_user_email"("target_user_id" "uuid", "new_email" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."admin_update_user_password"("target_user_id" "uuid", "new_password" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Verificar que o caller é admin
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+  IF caller_role IS NULL OR caller_role != 'admin' THEN
+    RAISE EXCEPTION 'Sem permissão: apenas admin pode executar esta função';
+  END IF;
+
+  -- Atualizar senha no auth.users usando bcrypt
+  UPDATE auth.users
+  SET encrypted_password = crypt(new_password, gen_salt('bf')),
+      updated_at = now()
+  WHERE id = target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Usuário não encontrado: %', target_user_id;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."admin_update_user_password"("target_user_id" "uuid", "new_password" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."check_setor_dependencies"("p_setor_id" integer) RETURNS json
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -187,15 +405,14 @@ CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, nome, setor_id, role)
-    VALUES (
-        NEW.id,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'nome', NEW.email),
-        (NEW.raw_user_meta_data->>'setor_id')::INTEGER,
-        'usuario'
-    );
-    RETURN NEW;
+  INSERT INTO public.profiles (id, email, nome, setor_id, role)
+  VALUES (
+    NEW.id, NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'nome', NEW.email),
+    (NEW.raw_user_meta_data->>'setor_id')::INTEGER,
+    'solicitante'
+  );
+  RETURN NEW;
 END;
 $$;
 
@@ -246,6 +463,29 @@ $$;
 
 
 ALTER FUNCTION "public"."update_updated_at"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."verify_user_password"("target_user_id" "uuid", "password_attempt" "text") RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions'
+    AS $$
+DECLARE
+  stored_hash text;
+BEGIN
+  SELECT encrypted_password INTO stored_hash
+  FROM auth.users
+  WHERE id = target_user_id;
+
+  IF stored_hash IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN stored_hash = crypt(password_attempt, stored_hash);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."verify_user_password"("target_user_id" "uuid", "password_attempt" "text") OWNER TO "postgres";
 
 SET default_tablespace = '';
 
@@ -333,6 +573,7 @@ CREATE TABLE IF NOT EXISTS "public"."atividades" (
     "data_prevista" "date",
     "status" "text" DEFAULT 'aberta'::"text" NOT NULL,
     "motivo_status" "text",
+    "responsavel_atividade_id" "uuid",
     CONSTRAINT "atividades_status_check" CHECK (("status" = ANY (ARRAY['aberta'::"text", 'em_andamento'::"text", 'aguardando'::"text", 'resolvida'::"text", 'cancelada'::"text"])))
 );
 
@@ -529,6 +770,10 @@ CREATE TABLE IF NOT EXISTS "public"."entregas" (
     "motivo_status" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
+    "criterios_aceite" "text",
+    "orgao_responsavel_setor_id" integer,
+    "responsavel_entrega_id" "uuid",
+    "data_inicio" "date",
     CONSTRAINT "entregas_status_check" CHECK (("status" = ANY (ARRAY['aberta'::"text", 'em_andamento'::"text", 'aguardando'::"text", 'resolvida'::"text", 'cancelada'::"text"])))
 );
 
@@ -833,7 +1078,9 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "ativo" boolean DEFAULT true,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "profiles_role_check" CHECK (("role" = ANY (ARRAY['admin'::"text", 'gestor'::"text", 'usuario'::"text"])))
+    "senha_zerada" boolean DEFAULT false,
+    "reset_token" "text",
+    CONSTRAINT "profiles_role_check" CHECK (("role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text", 'usuario'::"text", 'solicitante'::"text"])))
 );
 
 
@@ -874,7 +1121,12 @@ CREATE TABLE IF NOT EXISTS "public"."projetos" (
     "setor_lider_id" integer NOT NULL,
     "criado_por" "uuid" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "indicador_sucesso" "text",
+    "tipo_acao" "text"[],
+    "dependencias_projetos" "text",
+    "data_inicio" "date",
+    "responsavel_id" "uuid"
 );
 
 
@@ -901,7 +1153,8 @@ CREATE TABLE IF NOT EXISTS "public"."setores" (
     "id" integer NOT NULL,
     "codigo" "text" NOT NULL,
     "nome_completo" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "visivel_cadastro" boolean DEFAULT true NOT NULL
 );
 
 
@@ -921,6 +1174,47 @@ ALTER SEQUENCE "public"."setores_id_seq" OWNER TO "postgres";
 
 
 ALTER SEQUENCE "public"."setores_id_seq" OWNED BY "public"."setores"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."solicitacoes_alteracao" (
+    "id" integer NOT NULL,
+    "solicitante_id" "uuid" NOT NULL,
+    "solicitante_nome" "text" NOT NULL,
+    "tipo_entidade" "text" NOT NULL,
+    "entidade_id" integer NOT NULL,
+    "entidade_nome" "text" NOT NULL,
+    "projeto_id" integer NOT NULL,
+    "tipo_operacao" "text" NOT NULL,
+    "dados_alteracao" "jsonb",
+    "status" "text" DEFAULT 'em_analise'::"text" NOT NULL,
+    "avaliador_id" "uuid",
+    "avaliador_nome" "text",
+    "justificativa_avaliador" "text",
+    "avaliado_em" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "solicitacoes_alteracao_status_check" CHECK (("status" = ANY (ARRAY['em_analise'::"text", 'deferida'::"text", 'indeferida'::"text", 'cancelada'::"text"]))),
+    CONSTRAINT "solicitacoes_alteracao_tipo_entidade_check" CHECK (("tipo_entidade" = ANY (ARRAY['projeto'::"text", 'entrega'::"text", 'atividade'::"text"]))),
+    CONSTRAINT "solicitacoes_alteracao_tipo_operacao_check" CHECK (("tipo_operacao" = ANY (ARRAY['edicao'::"text", 'exclusao'::"text"])))
+);
+
+
+ALTER TABLE "public"."solicitacoes_alteracao" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."solicitacoes_alteracao_id_seq"
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."solicitacoes_alteracao_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."solicitacoes_alteracao_id_seq" OWNED BY "public"."solicitacoes_alteracao"."id";
 
 
 
@@ -1089,6 +1383,10 @@ ALTER TABLE ONLY "public"."setores" ALTER COLUMN "id" SET DEFAULT "nextval"('"pu
 
 
 
+ALTER TABLE ONLY "public"."solicitacoes_alteracao" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."solicitacoes_alteracao_id_seq"'::"regclass");
+
+
+
 ALTER TABLE ONLY "public"."acoes_estrategicas"
     ADD CONSTRAINT "acoes_estrategicas_numero_key" UNIQUE ("numero");
 
@@ -1241,6 +1539,11 @@ ALTER TABLE ONLY "public"."setores"
 
 ALTER TABLE ONLY "public"."setores"
     ADD CONSTRAINT "setores_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."solicitacoes_alteracao"
+    ADD CONSTRAINT "solicitacoes_alteracao_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1422,6 +1725,11 @@ ALTER TABLE ONLY "public"."atividades"
 
 
 
+ALTER TABLE ONLY "public"."atividades"
+    ADD CONSTRAINT "atividades_responsavel_atividade_id_fkey" FOREIGN KEY ("responsavel_atividade_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."audit_log"
     ADD CONSTRAINT "audit_log_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "public"."profiles"("id");
 
@@ -1453,7 +1761,17 @@ ALTER TABLE ONLY "public"."entrega_participantes"
 
 
 ALTER TABLE ONLY "public"."entregas"
+    ADD CONSTRAINT "entregas_orgao_responsavel_setor_id_fkey" FOREIGN KEY ("orgao_responsavel_setor_id") REFERENCES "public"."setores"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."entregas"
     ADD CONSTRAINT "entregas_projeto_id_fkey" FOREIGN KEY ("projeto_id") REFERENCES "public"."projetos"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entregas"
+    ADD CONSTRAINT "entregas_responsavel_entrega_id_fkey" FOREIGN KEY ("responsavel_entrega_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
 
 
@@ -1543,7 +1861,27 @@ ALTER TABLE ONLY "public"."projetos"
 
 
 ALTER TABLE ONLY "public"."projetos"
+    ADD CONSTRAINT "projetos_responsavel_id_fkey" FOREIGN KEY ("responsavel_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."projetos"
     ADD CONSTRAINT "projetos_setor_lider_id_fkey" FOREIGN KEY ("setor_lider_id") REFERENCES "public"."setores"("id");
+
+
+
+ALTER TABLE ONLY "public"."solicitacoes_alteracao"
+    ADD CONSTRAINT "solicitacoes_alteracao_avaliador_id_fkey" FOREIGN KEY ("avaliador_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."solicitacoes_alteracao"
+    ADD CONSTRAINT "solicitacoes_alteracao_projeto_id_fkey" FOREIGN KEY ("projeto_id") REFERENCES "public"."projetos"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."solicitacoes_alteracao"
+    ADD CONSTRAINT "solicitacoes_alteracao_solicitante_id_fkey" FOREIGN KEY ("solicitante_id") REFERENCES "public"."profiles"("id");
 
 
 
@@ -1628,37 +1966,9 @@ CREATE POLICY "ae_update_admin" ON "public"."acoes_estrategicas" FOR UPDATE TO "
 
 
 
-CREATE POLICY "ap_admin" ON "public"."atividade_participantes" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "ativ_admin" ON "public"."atividades" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
-
-
-
-CREATE POLICY "ap_gestor" ON "public"."atividade_participantes" TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM ((("public"."atividades" "a"
-     JOIN "public"."entregas" "e" ON (("e"."id" = "a"."entrega_id")))
-     JOIN "public"."projetos" "p" ON (("p"."id" = "e"."projeto_id")))
-     JOIN "public"."profiles" "pr" ON (("pr"."id" = "auth"."uid"())))
-  WHERE (("a"."id" = "atividade_participantes"."atividade_id") AND ("pr"."role" = 'gestor'::"text") AND ("pr"."setor_id" = "p"."setor_lider_id"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM ((("public"."atividades" "a"
-     JOIN "public"."entregas" "e" ON (("e"."id" = "a"."entrega_id")))
-     JOIN "public"."projetos" "p" ON (("p"."id" = "e"."projeto_id")))
-     JOIN "public"."profiles" "pr" ON (("pr"."id" = "auth"."uid"())))
-  WHERE (("a"."id" = "atividade_participantes"."atividade_id") AND ("pr"."role" = 'gestor'::"text") AND ("pr"."setor_id" = "p"."setor_lider_id")))));
-
-
-
-CREATE POLICY "ap_select" ON "public"."atividade_participantes" FOR SELECT TO "authenticated" USING (true);
-
-
-
-CREATE POLICY "ativ_admin" ON "public"."atividades" TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1678,17 +1988,37 @@ CREATE POLICY "ativ_select" ON "public"."atividades" FOR SELECT TO "authenticate
 
 
 
+CREATE POLICY "atividade_part_delete_auth" ON "public"."atividade_participantes" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
+CREATE POLICY "atividade_part_insert_auth" ON "public"."atividade_participantes" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
+CREATE POLICY "atividade_part_select_auth" ON "public"."atividade_participantes" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "atividade_part_update_auth" ON "public"."atividade_participantes" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
 ALTER TABLE "public"."atividade_participantes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."atividades" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "audit_admin" ON "public"."audit_log" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "audit_admin" ON "public"."audit_log" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1701,13 +2031,19 @@ CREATE POLICY "audit_gestor_insert" ON "public"."audit_log" FOR INSERT TO "authe
 ALTER TABLE "public"."audit_log" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "audit_select_admin" ON "public"."audit_log" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "audit_select_admin" ON "public"."audit_log" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
 CREATE POLICY "config_admin_all" ON "public"."configuracoes" TO "service_role" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "config_insert_admin" ON "public"."configuracoes" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1719,9 +2055,9 @@ CREATE POLICY "config_select_anon" ON "public"."configuracoes" FOR SELECT TO "an
 
 
 
-CREATE POLICY "config_update_admin" ON "public"."configuracoes" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "config_update_admin" ON "public"."configuracoes" FOR UPDATE USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1749,11 +2085,9 @@ ALTER TABLE "public"."destaques_estrategicos" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."eixos_prioritarios" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "ent_admin" ON "public"."entregas" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "ent_admin" ON "public"."entregas" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1771,34 +2105,32 @@ CREATE POLICY "ent_select" ON "public"."entregas" FOR SELECT TO "authenticated" 
 
 
 
+CREATE POLICY "entrega_part_delete_auth" ON "public"."entrega_participantes" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
+CREATE POLICY "entrega_part_insert_auth" ON "public"."entrega_participantes" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
+CREATE POLICY "entrega_part_select_auth" ON "public"."entrega_participantes" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "entrega_part_update_auth" ON "public"."entrega_participantes" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
 ALTER TABLE "public"."entrega_participantes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."entregas" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "ep_admin" ON "public"."entrega_participantes" TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
-
-
-
-CREATE POLICY "ep_gestor" ON "public"."entrega_participantes" TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM (("public"."entregas" "e"
-     JOIN "public"."projetos" "p" ON (("p"."id" = "e"."projeto_id")))
-     JOIN "public"."profiles" "pr" ON (("pr"."id" = "auth"."uid"())))
-  WHERE (("e"."id" = "entrega_participantes"."entrega_id") AND ("pr"."role" = 'gestor'::"text") AND ("pr"."setor_id" = "p"."setor_lider_id"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM (("public"."entregas" "e"
-     JOIN "public"."projetos" "p" ON (("p"."id" = "e"."projeto_id")))
-     JOIN "public"."profiles" "pr" ON (("pr"."id" = "auth"."uid"())))
-  WHERE (("e"."id" = "entrega_participantes"."entrega_id") AND ("pr"."role" = 'gestor'::"text") AND ("pr"."setor_id" = "p"."setor_lider_id")))));
-
-
-
-CREATE POLICY "ep_select" ON "public"."entrega_participantes" FOR SELECT TO "authenticated" USING (true);
-
 
 
 ALTER TABLE "public"."estrategias" ENABLE ROW LEVEL SECURITY;
@@ -1807,7 +2139,37 @@ ALTER TABLE "public"."estrategias" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."ficha_setores" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "ficha_setores_delete_admin" ON "public"."ficha_setores" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "ficha_setores_insert_admin" ON "public"."ficha_setores" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "ficha_setores_update_admin" ON "public"."ficha_setores" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
 ALTER TABLE "public"."fichas" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "fichas_delete_admin" ON "public"."fichas" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "fichas_insert_admin" ON "public"."fichas" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
 
 
 CREATE POLICY "fichas_update_admin" ON "public"."fichas" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
@@ -1918,11 +2280,9 @@ CREATE POLICY "obs_update_own" ON "public"."observacoes" FOR UPDATE TO "authenti
 ALTER TABLE "public"."observacoes" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "pa_admin" ON "public"."projeto_acoes" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "pa_admin" ON "public"."projeto_acoes" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -1937,6 +2297,36 @@ CREATE POLICY "pa_gestor" ON "public"."projeto_acoes" TO "authenticated" USING (
 
 
 CREATE POLICY "pa_select" ON "public"."projeto_acoes" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "pan_delete_admin" ON "public"."panoramico_linhas" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "pan_insert_admin" ON "public"."panoramico_linhas" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "pan_setores_delete_admin" ON "public"."panoramico_setores" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "pan_setores_insert_admin" ON "public"."panoramico_setores" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+
+
+
+CREATE POLICY "pan_setores_update_admin" ON "public"."panoramico_setores" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
 
 
 
@@ -1973,11 +2363,9 @@ CREATE POLICY "profiles_update_own" ON "public"."profiles" FOR UPDATE TO "authen
 
 
 
-CREATE POLICY "proj_admin" ON "public"."projetos" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "proj_admin" ON "public"."projetos" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"text")))));
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
 
 
 
@@ -2010,6 +2398,29 @@ ALTER TABLE "public"."projetos" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."setores" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "sol_insert" ON "public"."solicitacoes_alteracao" FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text", 'gestor'::"text"]))))));
+
+
+
+CREATE POLICY "sol_select" ON "public"."solicitacoes_alteracao" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "sol_update_admin" ON "public"."solicitacoes_alteracao" FOR UPDATE USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'master'::"text"]))))));
+
+
+
+CREATE POLICY "sol_update_own" ON "public"."solicitacoes_alteracao" FOR UPDATE USING (("solicitante_id" = "auth"."uid"()));
+
+
+
+ALTER TABLE "public"."solicitacoes_alteracao" ENABLE ROW LEVEL SECURITY;
 
 
 
@@ -2174,9 +2585,33 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."admin_confirm_user_email"("target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_confirm_user_email"("target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_confirm_user_email"("target_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."admin_create_user"("p_email" "text", "p_password" "text", "p_nome" "text", "p_setor_id" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_create_user"("p_email" "text", "p_password" "text", "p_nome" "text", "p_setor_id" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_create_user"("p_email" "text", "p_password" "text", "p_nome" "text", "p_setor_id" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."admin_create_user_identity"("p_user_id" "uuid", "p_email" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_create_user_identity"("p_user_id" "uuid", "p_email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_create_user_identity"("p_user_id" "uuid", "p_email" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."admin_delete_setor"("p_setor_id" integer, "p_transfer_to_id" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."admin_delete_setor"("p_setor_id" integer, "p_transfer_to_id" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."admin_delete_setor"("p_setor_id" integer, "p_transfer_to_id" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."admin_delete_user"("target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_delete_user"("target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_delete_user"("target_user_id" "uuid") TO "service_role";
 
 
 
@@ -2189,6 +2624,18 @@ GRANT ALL ON FUNCTION "public"."admin_update_acao_campo"("acao_numero" "text", "
 GRANT ALL ON FUNCTION "public"."admin_update_observacao"("obs_id" integer, "novo_status" "text", "resposta" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."admin_update_observacao"("obs_id" integer, "novo_status" "text", "resposta" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."admin_update_observacao"("obs_id" integer, "novo_status" "text", "resposta" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."admin_update_user_email"("target_user_id" "uuid", "new_email" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_update_user_email"("target_user_id" "uuid", "new_email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_update_user_email"("target_user_id" "uuid", "new_email" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."admin_update_user_password"("target_user_id" "uuid", "new_password" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_update_user_password"("target_user_id" "uuid", "new_password" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_update_user_password"("target_user_id" "uuid", "new_password" "text") TO "service_role";
 
 
 
@@ -2213,6 +2660,12 @@ GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."verify_user_password"("target_user_id" "uuid", "password_attempt" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."verify_user_password"("target_user_id" "uuid", "password_attempt" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."verify_user_password"("target_user_id" "uuid", "password_attempt" "text") TO "service_role";
 
 
 
@@ -2495,6 +2948,18 @@ GRANT ALL ON SEQUENCE "public"."setores_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."solicitacoes_alteracao" TO "anon";
+GRANT ALL ON TABLE "public"."solicitacoes_alteracao" TO "authenticated";
+GRANT ALL ON TABLE "public"."solicitacoes_alteracao" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."solicitacoes_alteracao_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."solicitacoes_alteracao_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."solicitacoes_alteracao_id_seq" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."v_observacoes" TO "anon";
 GRANT ALL ON TABLE "public"."v_observacoes" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_observacoes" TO "service_role";
@@ -2578,14 +3043,5 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
-
-
-
-
-
-
-drop extension if exists "pg_net";
-
-CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
