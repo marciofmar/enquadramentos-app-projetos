@@ -126,6 +126,14 @@ export interface Atividade {
   responsavel_atividade_id: string | null
 }
 
+export interface AtividadeParticipante {
+  id?: number
+  user_id: string | null
+  setor_id: number | null
+  tipo_participante: 'usuario' | 'setor' | 'externo_subsegop' | 'externo_sedec'
+  papel: string
+}
+
 export interface SolicitacaoAlteracao {
   id: number
   solicitante_id: string

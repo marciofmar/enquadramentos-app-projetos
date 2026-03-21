@@ -11,7 +11,8 @@ import RegisterGestorModal from '@/components/RegisterGestorModal'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
-interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; responsavel_atividade_id: string | null; participantes: Participante[] }
+interface AtivParticipante { user_id: string | null; setor_id: number | null; tipo_participante: string; papel: string }
+interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; responsavel_atividade_id: string | null; participantes: AtivParticipante[] }
 interface Entrega {
   nome: string; descricao: string; criterios_aceite: string; dependencias_criticas: string
   quinzena: string; status: string; motivo_status: string
@@ -65,7 +66,7 @@ export default function NovoProjetoPage() {
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
   const [configs, setConfigs] = useState<Record<string, string>>({})
-  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
   const [showGestorModal, setShowGestorModal] = useState(false)
   const [dataInicio, setDataInicio] = useState('')
 
@@ -99,11 +100,14 @@ export default function NovoProjetoPage() {
       if (s) setSetores(s)
 
       const { data: usersData } = await supabase.from('profiles')
-        .select('id, nome, email')
-        .in('role', ['gestor', 'master', 'admin'])
+        .select('id, nome, email, setor_id, setores:setor_id(codigo)')
+        .not('role', 'eq', 'solicitante')
         .eq('ativo', true)
         .order('nome')
-      if (usersData) setEligibleUsers(usersData)
+      if (usersData) setEligibleUsers(usersData.map((u: any) => ({
+        id: u.id, nome: u.nome, email: u.email,
+        setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
+      })))
 
       const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
       if (a) setAcoes(a)
@@ -193,7 +197,7 @@ export default function NovoProjetoPage() {
   function addParticipanteAtividade(eIdx: number, aIdx: number) {
     setEntregas(prev => prev.map((e, i) => i === eIdx ? {
       ...e, atividades: e.atividades.map((a, j) => j === aIdx ? {
-        ...a, participantes: [...a.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+        ...a, participantes: [...a.participantes, { user_id: null, setor_id: null, tipo_participante: 'usuario', papel: '' }]
       } : a)
     } : e))
   }
@@ -250,20 +254,22 @@ export default function NovoProjetoPage() {
           alert(`A atividade "${a.nome}" tem data posterior à quinzena da entrega "${e.nome}".`)
           return
         }
-        // Check atividade participantes are subset of entrega participantes
-        const entregaKeys = new Set(validParticipantes.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
+        // Check atividade participantes: setor do usuário deve estar nos participantes da entrega
+        const entregaSetorIds = new Set(validParticipantes.filter(p => p.tipo_participante === 'setor' && p.setor_id).map(p => p.setor_id))
         const ativValidP = a.participantes.filter(p => p.papel.trim())
         for (const ap of ativValidP) {
-          const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
-          if (!entregaKeys.has(apKey)) {
-            alert(`A atividade "${a.nome}" inclui um participante que não está na entrega "${e.nome}".`)
-            return
+          if (ap.tipo_participante === 'usuario' && ap.user_id) {
+            const u = eligibleUsers.find(u => u.id === ap.user_id)
+            if (u?.setor_id && !entregaSetorIds.has(u.setor_id)) {
+              alert(`A atividade "${a.nome}" inclui o participante "${u.nome}" cujo setor não está na entrega "${e.nome}".`)
+              return
+            }
           }
         }
-        // Check duplicate setores in atividade
-        const aKeys = ativValidP.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+        // Check duplicate users in atividade
+        const aKeys = ativValidP.map(p => p.tipo_participante === 'usuario' ? `u_${p.user_id}` : p.tipo_participante)
         if (new Set(aKeys).size !== aKeys.length) {
-          alert(`A atividade "${a.nome}" tem participantes duplicados. Use o campo "papel" para múltiplos papéis.`)
+          alert(`A atividade "${a.nome}" tem participantes duplicados.`)
           return
         }
       }
@@ -367,7 +373,8 @@ export default function NovoProjetoPage() {
             await supabase.from('atividade_participantes').insert(
               validAP.map(p => ({
                 atividade_id: ativ.id,
-                setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+                user_id: p.tipo_participante === 'usuario' ? p.user_id : null,
+                setor_id: p.setor_id,
                 tipo_participante: p.tipo_participante,
                 papel: p.papel.trim()
               })))
@@ -421,34 +428,37 @@ export default function NovoProjetoPage() {
     )
   }
 
-  // Participante select para ATIVIDADE (apenas setores da entrega, sem duplicados)
-  function renderAtividadeParticipanteSelect(p: Participante, idx: number, allParts: Participante[], entregaParts: Participante[], onChange: (field: string, value: any) => void, onRemove: () => void) {
-    const usedKeys = new Set(allParts.filter((_, i) => i !== idx).map(pKey))
-    const entregaValidParts = entregaParts.filter(ep => ep.papel.trim())
+  // Participante select para ATIVIDADE (usuários cujo setor está na entrega)
+  function renderAtividadeParticipanteSelect(p: AtivParticipante, idx: number, allParts: AtivParticipante[], entregaParts: Participante[], onChange: (field: string, value: any) => void, onRemove: () => void) {
+    const usedUserIds = new Set(allParts.filter((_, i) => i !== idx).filter(ap => ap.user_id).map(ap => ap.user_id))
+    const entregaSetorIds = new Set(entregaParts.filter(ep => ep.tipo_participante === 'setor' && ep.setor_id && ep.papel.trim()).map(ep => ep.setor_id))
+    // Filtrar usuários: setor deve estar nos participantes da entrega
+    const filteredUsers = eligibleUsers.filter(u => {
+      if (usedUserIds.has(u.id)) return false
+      if (entregaSetorIds.size === 0) return false
+      return u.setor_id ? entregaSetorIds.has(u.setor_id) : false
+    })
+    const selectedUser = p.user_id ? eligibleUsers.find(u => u.id === p.user_id) : null
     return (
       <div className="flex gap-2 items-start">
-        <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
-          onChange={e => {
-            const v = e.target.value
-            if (v === 'externo_subsegop' || v === 'externo_sedec') {
-              onChange('tipo_participante', v); onChange('setor_id', null)
-            } else {
-              onChange('tipo_participante', 'setor'); onChange('setor_id', parseInt(v) || null)
-            }
-          }} className="input-field text-xs flex-1">
-          <option value="">Selecione o participante...</option>
-          {entregaValidParts.map(ep => {
-            if (ep.tipo_participante === 'setor' && ep.setor_id) {
-              const s = setores.find(ss => ss.id === ep.setor_id)
-              const k = `s_${ep.setor_id}`
-              return <option key={k} value={ep.setor_id} disabled={usedKeys.has(k)}>{s?.codigo || 'Setor'}{usedKeys.has(k) ? ' (já incluído)' : ''}</option>
-            } else {
-              const label = ep.tipo_participante === 'externo_subsegop' ? 'Ator externo à SUBSEGOP' : 'Ator externo à SEDEC'
-              return <option key={ep.tipo_participante} value={ep.tipo_participante} disabled={usedKeys.has(ep.tipo_participante)}>{label}{usedKeys.has(ep.tipo_participante) ? ' (já incluído)' : ''}</option>
-            }
-          })}
-          {entregaValidParts.length === 0 && <option disabled>Adicione participantes na entrega primeiro</option>}
-        </select>
+        <div className="flex-1 min-w-0">
+          <UserAutocompleteSelect
+            value={p.user_id}
+            onChange={userId => {
+              const u = userId ? eligibleUsers.find(u => u.id === userId) : null
+              onChange('user_id', userId)
+              onChange('setor_id', u?.setor_id || null)
+              onChange('tipo_participante', 'usuario')
+            }}
+            users={p.user_id && selectedUser ? [selectedUser, ...filteredUsers] : filteredUsers}
+            placeholder="Selecione o participante..."
+          />
+        </div>
+        {selectedUser?.setor_codigo && (
+          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-2 rounded mt-0.5 shrink-0 font-medium">
+            {selectedUser.setor_codigo}
+          </span>
+        )}
         <input type="text" value={p.papel} onChange={e => onChange('papel', e.target.value)}
           placeholder="Papel na atividade" className="input-field text-xs flex-1" />
         <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600 mt-2 shrink-0">
@@ -481,8 +491,14 @@ export default function NovoProjetoPage() {
     const entrega = entregas[eIdx]
     const removendo = entrega.participantes[pIdx]
     const rKey = pKey(removendo)
+    // Checar atividades com participantes tipo 'usuario' cujo setor corresponda ao setor sendo removido
     const ativComEsseSetor = entrega.atividades.filter(a =>
-      a.participantes.some(ap => pKey(ap) === rKey)
+      a.participantes.some(ap => {
+        if (ap.tipo_participante === 'usuario' && ap.user_id && removendo.tipo_participante === 'setor') {
+          return ap.setor_id === removendo.setor_id
+        }
+        return pKey(ap as any) === rKey
+      })
     )
     if (ativComEsseSetor.length > 0) {
       const nomes = ativComEsseSetor.map(a => `"${a.nome}"`).join(', ')

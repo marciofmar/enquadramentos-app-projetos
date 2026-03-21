@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Filter, X, ExternalLink, ChevronRight, ChevronDown, BarChart3, Loader2 } from 'lucide-react'
 import type { Profile } from '@/lib/types'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 
 /* ───────────────────── Constantes ───────────────────── */
 const DAY_MS = 1000 * 60 * 60 * 24
@@ -29,6 +30,7 @@ interface GanttRow {
   endDate?: Date
   status?: string
   isSetorDireto?: boolean
+  isUserDireto?: boolean  // user is responsible or participant
   atividades?: (any & { isSetorDireto: boolean })[]
 }
 
@@ -52,6 +54,8 @@ export default function PainelGanttPage() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [soComEntregas, setSoComEntregas] = useState(false)
   const [popup, setPopup] = useState<{ type: 'projeto' | 'entrega' | 'atividade'; data: any; x: number; y: number } | null>(null)
+  const [userFilter, setUserFilter] = useState<string | null>(null)
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; setor_id: number | null; setor_codigo: string | null }[]>([])
 
   /* Refs para sincronização de scroll horizontal */
   const timelineRef = useRef<HTMLDivElement>(null)
@@ -84,7 +88,7 @@ export default function PainelGanttPage() {
               id, nome, descricao, data_prevista, status, motivo_status,
               responsavel_atividade_id,
               responsavel_atividade:responsavel_atividade_id(id, nome),
-              atividade_participantes(id, setor_id, tipo_participante, papel,
+              atividade_participantes(id, user_id, setor_id, tipo_participante, papel,
                 setor:setor_id(id, codigo, nome_completo))
             )
           )
@@ -100,6 +104,16 @@ export default function PainelGanttPage() {
         }
       }
       if (setoresRes.data) setSetores(setoresRes.data)
+      // Load eligible users for filter
+      const { data: usersData } = await supabase.from('profiles')
+        .select('id, nome, setor_id, setores:setor_id(codigo)')
+        .not('role', 'eq', 'solicitante')
+        .eq('ativo', true)
+        .order('nome')
+      if (usersData) setEligibleUsers(usersData.map((u: any) => ({
+        id: u.id, nome: u.nome,
+        setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
+      })))
       if (projetosRes.data) setProjetos(projetosRes.data)
       setLoading(false)
     }
@@ -112,6 +126,20 @@ export default function PainelGanttPage() {
     const s = setores.find(s => s.codigo === setorFilter)
     setSetorFilterId(s?.id || null)
   }, [setorFilter, setores])
+
+  /* ─── Filtrar usuários elegíveis por setor selecionado ─── */
+  const filteredEligibleUsers = useMemo(() => {
+    if (!setorFilterId) return eligibleUsers
+    return eligibleUsers.filter(u => u.setor_id === setorFilterId)
+  }, [eligibleUsers, setorFilterId])
+
+  /* ─── Ao trocar setor, limpar userFilter se usuário não pertence ao novo setor ─── */
+  useEffect(() => {
+    if (userFilter && setorFilterId) {
+      const u = eligibleUsers.find(u => u.id === userFilter)
+      if (u && u.setor_id !== setorFilterId) setUserFilter(null)
+    }
+  }, [setorFilterId])
 
   /* ─── Checar se entrega pertence ao setor (participante ou responsável) ─── */
   const isEntregaDoSetor = useCallback((entrega: any, sid: number | null) => {
@@ -131,6 +159,21 @@ export default function PainelGanttPage() {
     if (!sid) return false
     if ((atividade.atividade_participantes || []).some((ap: any) => ap.setor_id === sid)) return true
     return false
+  }, [])
+
+  const isEntregaDoUser = useCallback((entrega: any, userId: string | null) => {
+    if (!userId) return false
+    if (entrega.responsavel_entrega_id === userId) return true
+    return (entrega.atividades || []).some((a: any) => {
+      if (a.responsavel_atividade_id === userId) return true
+      return (a.atividade_participantes || []).some((ap: any) => ap.user_id === userId)
+    })
+  }, [])
+
+  const isAtividadeDoUser = useCallback((atividade: any, userId: string | null) => {
+    if (!userId) return false
+    if (atividade.responsavel_atividade_id === userId) return true
+    return (atividade.atividade_participantes || []).some((ap: any) => ap.user_id === userId)
   }, [])
 
   /* ─── Filtrar projetos não finalizados e por setor ─── */
@@ -207,7 +250,7 @@ export default function PainelGanttPage() {
               if (!b.data_prevista) return -1
               return a.data_prevista.localeCompare(b.data_prevista) || a.id - b.id
             })
-            .map((a: any) => ({ ...a, isSetorDireto: isAtividadeDoSetor(a, setorFilterId) }))
+            .map((a: any) => ({ ...a, isSetorDireto: isAtividadeDoSetor(a, setorFilterId), isUserDireto: isAtividadeDoUser(a, userFilter) }))
 
           result.push({
             type: 'entrega-lane',
@@ -220,13 +263,14 @@ export default function PainelGanttPage() {
             endDate: eEnd,
             status: e.status,
             isSetorDireto: isSetor,
+            isUserDireto: isEntregaDoUser(e, userFilter),
             atividades
           })
         })
       }
     })
     return result
-  }, [filteredProjetos, collapsed, now, setorFilterId, isEntregaDoSetor, isAtividadeDoSetor])
+  }, [filteredProjetos, collapsed, now, setorFilterId, isEntregaDoSetor, isAtividadeDoSetor, userFilter, isEntregaDoUser, isAtividadeDoUser])
 
   /* ─── Calcular extensão da timeline ─── */
   const { minDate, maxDate, toX, timelineWidth, months } = useMemo(() => {
@@ -356,6 +400,16 @@ export default function PainelGanttPage() {
             <option value="todos">Todos os projetos</option>
             <option value="com_entregas">Somente com entregas</option>
           </select>
+          <span className="border-l border-gray-200 pl-3 ml-1" />
+          <label className="text-sm font-medium text-gray-600">Resp./Part.:</label>
+          <div className="w-[220px]">
+            <UserAutocompleteSelect
+              value={userFilter}
+              onChange={val => setUserFilter(val)}
+              users={filteredEligibleUsers}
+              placeholder="Todos"
+            />
+          </div>
           {filteredProjetos.length > 0 && (
             <span className="text-xs text-gray-400 ml-2">
               {filteredProjetos.length} projeto{filteredProjetos.length !== 1 ? 's' : ''} encontrado{filteredProjetos.length !== 1 ? 's' : ''}
@@ -373,6 +427,13 @@ export default function PainelGanttPage() {
         <span className="flex items-center gap-1"><span className="w-3 h-2 rounded bg-blue-400 opacity-35 inline-block" /> Contexto</span>
         <span className="border-l border-gray-300 pl-3 flex items-center gap-1"><span className="text-indigo-800 text-[11px]">◆</span> Atividade do setor</span>
         <span className="flex items-center gap-1"><span className="text-indigo-800 text-[9px] opacity-50">◇</span> Atividade contexto</span>
+        {userFilter && (
+          <>
+            <span className="border-l border-gray-300 pl-3 flex items-center gap-1"><span className="w-3 h-2 rounded bg-orange-400 border-l-2 border-orange-600 inline-block" /> Resp./Part. filtrado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-2 rounded bg-blue-400 opacity-50 inline-block" /> Setor participa (sem o usuário)</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-2 rounded bg-blue-400 opacity-15 inline-block" /> Setor não participa</span>
+          </>
+        )}
       </div>
 
       {/* Gantt Container */}
@@ -480,15 +541,18 @@ export default function PainelGanttPage() {
       }
 
       // Entrega lane
-      const opacity = row.isSetorDireto ? '' : 'opacity-60'
+      const isUserMatch = row.isUserDireto
+      const opacity = userFilter
+        ? (isUserMatch ? '' : row.isSetorDireto ? 'opacity-60' : 'opacity-30')
+        : (row.isSetorDireto ? '' : 'opacity-60')
       return (
         <div key={`le-${row.entregaId}`}
-             className={`absolute w-full flex items-center px-2 pl-7 border-b border-gray-100 ${opacity}`}
+             className={`absolute w-full flex items-center px-2 pl-7 border-b border-gray-100 ${opacity} ${userFilter && isUserMatch ? 'bg-orange-50/50' : ''}`}
              style={{ top: y, height: ROW_HEIGHT }}
              onMouseEnter={e => showPopup('entrega', row.entregaData, e)}
              onMouseLeave={hidePopup}>
-          {row.isSetorDireto && <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-sedec-500 rounded-r" />}
-          <span className="text-[11px] text-gray-600 truncate cursor-default" title={row.entregaNome}>
+          {(row.isSetorDireto || (userFilter && isUserMatch)) && <div className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r ${userFilter && isUserMatch ? 'bg-orange-500' : 'bg-sedec-500'}`} />}
+          <span className={`text-[11px] truncate cursor-default ${userFilter && isUserMatch ? 'text-orange-700 font-medium' : 'text-gray-600'}`} title={row.entregaNome}>
             {row.entregaNome}
           </span>
         </div>
@@ -523,6 +587,11 @@ export default function PainelGanttPage() {
       const isAtrasada = !isResolvida && row.status !== 'cancelada' && row.endDate < now
       const barColor = isResolvida ? 'bg-green-400' : isAtrasada ? 'bg-red-400' : 'bg-blue-400'
       const isDireto = row.isSetorDireto
+      const isUserMatch = row.isUserDireto
+      // Three-level opacity when userFilter is active
+      const barOpacity = userFilter
+        ? (isUserMatch ? 'opacity-100' : isDireto ? 'opacity-50' : 'opacity-15')
+        : (isDireto ? 'opacity-90' : 'opacity-30')
 
       return (
         <div key={`te-${row.entregaId}`}
@@ -530,12 +599,12 @@ export default function PainelGanttPage() {
              style={{ top: y, height: ROW_HEIGHT }}>
           {/* Barra da entrega */}
           <div
-            className={`absolute rounded ${barColor} ${isDireto ? 'opacity-90' : 'opacity-30'} cursor-pointer`}
+            className={`absolute rounded ${barColor} ${barOpacity} cursor-pointer ${userFilter && isUserMatch ? 'ring-2 ring-orange-400 ring-offset-1' : ''}`}
             style={{ left: barLeft, width: barWidth, top: 10, height: 20 }}
             onMouseEnter={e => showPopup('entrega', row.entregaData, e)}
             onMouseLeave={hidePopup}
           >
-            {isDireto && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-sedec-600 rounded-l" />}
+            {(isDireto || (userFilter && isUserMatch)) && <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-l ${userFilter && isUserMatch ? 'bg-orange-600' : 'bg-sedec-600'}`} />}
             <span className={`absolute inset-0 flex items-center px-1.5 text-[9px] truncate drop-shadow-sm ${isDireto ? 'text-white font-medium' : 'text-white/70'}`}>
               {barWidth > 40 ? row.entregaNome : ''}
             </span>
@@ -566,22 +635,34 @@ export default function PainelGanttPage() {
             const whiteOutline = { filter: 'drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white)' }
 
             if (a.isSetorDireto) {
+              const isAUserMatch = userFilter && a.isUserDireto
               return (
-                <div key={a.id} className={`absolute ${aColor} cursor-pointer z-10`}
+                <div key={a.id} className={`absolute ${isAUserMatch ? 'text-orange-700' : aColor} cursor-pointer z-10`}
                      style={{ left: ax - 5, top: 13, ...whiteOutline }}
                      onMouseEnter={e => showPopup('atividade', { ...a, projeto_nome: row.projectNome, entrega_nome: row.entregaNome }, e)}
                      onMouseLeave={hidePopup}>
-                  <span className="text-[12px] font-bold leading-none">&#9670;</span>
+                  <span className={`${isAUserMatch ? 'text-[14px]' : 'text-[12px]'} font-bold leading-none`}>&#9670;</span>
+                  {isAUserMatch && (
+                    <span className="absolute left-3 top-0.5 bg-orange-100 text-orange-800 text-[7px] px-1 rounded whitespace-nowrap max-w-[80px] truncate" title={a.nome}>
+                      {a.nome}
+                    </span>
+                  )}
                 </div>
               )
             }
-            // Contexto: diamante vazio, menor
+            // Contexto: diamante vazio, menor (or highlighted if user matches)
+            const isAUserCtx = userFilter && a.isUserDireto
             return (
-              <div key={a.id} className={`absolute ${aColor} opacity-50 cursor-pointer z-10`}
+              <div key={a.id} className={`absolute ${isAUserCtx ? 'text-orange-700' : aColor} ${isAUserCtx ? '' : 'opacity-50'} cursor-pointer z-10`}
                    style={{ left: ax - 4, top: 14, ...whiteOutline }}
                    onMouseEnter={e => showPopup('atividade', { ...a, projeto_nome: row.projectNome, entrega_nome: row.entregaNome }, e)}
                    onMouseLeave={hidePopup}>
-                <span className="text-[9px] leading-none">&#9671;</span>
+                <span className={`${isAUserCtx ? 'text-[12px] font-bold' : 'text-[9px]'} leading-none`}>{isAUserCtx ? '\u25C6' : '\u25C7'}</span>
+                {isAUserCtx && (
+                  <span className="absolute left-3 top-0.5 bg-orange-100 text-orange-800 text-[7px] px-1 rounded whitespace-nowrap max-w-[80px] truncate" title={a.nome}>
+                    {a.nome}
+                  </span>
+                )}
               </div>
             )
           })}
