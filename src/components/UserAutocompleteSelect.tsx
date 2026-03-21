@@ -7,6 +7,8 @@ export interface EligibleUser {
   id: string
   nome: string
   email?: string
+  setor_id?: number | null
+  setor_codigo?: string | null
 }
 
 interface Props {

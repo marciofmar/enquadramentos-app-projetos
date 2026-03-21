@@ -77,7 +77,7 @@ export default function ProjetoDetalhePage() {
   const [newEntregaForm, setNewEntregaForm] = useState<any>({})
   const [allExpanded, setAllExpanded] = useState(false)
 
-  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
   const [showGestorModal, setShowGestorModal] = useState(false)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -113,11 +113,14 @@ export default function ProjetoDetalhePage() {
     if (s) setSetores(s)
 
     const { data: usersData } = await supabase.from('profiles')
-      .select('id, nome, email')
-      .in('role', ['gestor', 'master', 'admin'])
+      .select('id, nome, email, setor_id, setores:setor_id(codigo)')
+      .not('role', 'eq', 'solicitante')
       .eq('ativo', true)
       .order('nome')
-    if (usersData) setEligibleUsers(usersData)
+    if (usersData) setEligibleUsers(usersData.map((u: any) => ({
+      id: u.id, nome: u.nome, email: u.email,
+      setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
+    })))
 
     const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
     if (a) setAcoes(a)
@@ -128,7 +131,7 @@ export default function ProjetoDetalhePage() {
         entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_inicio, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
           atividades(id, nome, descricao, data_prevista, status, motivo_status, responsavel_atividade_id,
-            atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo))
+            atividade_participantes(id, user_id, setor_id, tipo_participante, papel, user:user_id(id, nome, setor_id), setor:setor_id(codigo, nome_completo))
           )
         )`)
       .eq('id', id).single()
@@ -419,14 +422,21 @@ export default function ProjetoDetalhePage() {
 
     // Validate: if participante removed, check atividades don't reference them
     if (entrega?.atividades) {
-      const newKeys = new Set(validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
+      const newSetorIds = new Set(validP.filter((p: any) => p.tipo_participante === 'setor' && p.setor_id).map((p: any) => p.setor_id))
       for (const ativ of entrega.atividades) {
         for (const ap of (ativ.atividade_participantes || [])) {
-          const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
-          if (!newKeys.has(apKey)) {
-            const label = ap.tipo_participante === 'setor' ? (ap.setor?.codigo || 'Setor') : ap.tipo_participante
-            alert(`Não é possível remover "${label}" desta entrega. Está incluído na atividade "${ativ.nome}". Remova-o da atividade primeiro.`)
-            setSaving(false); return
+          if (ap.tipo_participante === 'usuario' && ap.setor_id) {
+            if (!newSetorIds.has(ap.setor_id)) {
+              const label = ap.user?.nome || 'Usuário'
+              alert(`Não é possível remover o setor desta entrega. O participante "${label}" da atividade "${ativ.nome}" pertence a este setor. Remova-o da atividade primeiro.`)
+              setSaving(false); return
+            }
+          } else if (ap.tipo_participante === 'setor') {
+            if (!newSetorIds.has(ap.setor_id)) {
+              const label = ap.setor?.codigo || 'Setor'
+              alert(`Não é possível remover "${label}" desta entrega. Está incluído na atividade "${ativ.nome}". Remova-o da atividade primeiro.`)
+              setSaving(false); return
+            }
           }
         }
       }
@@ -604,7 +614,7 @@ export default function ProjetoDetalhePage() {
       entrega_data_final: entrega.data_final_prevista || '',
       entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
-        id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
+        id: p.id, user_id: p.user_id || null, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
       })) || []
     })
     setEditingAtividade(a.id)
@@ -633,28 +643,29 @@ export default function ProjetoDetalhePage() {
     // Validate: participantes com papel preenchido
     const allP = editForm.participantes || []
     for (const p of allP) {
-      if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
+      if ((p.user_id || p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
         alert('Preencha o papel de todos os participantes.')
         setSaving(false); return
       }
     }
-    const validP = allP.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
+    const validP = allP.filter((p: any) => p.papel?.trim() && (p.user_id || p.setor_id || p.tipo_participante !== 'setor'))
 
-    // Validate: participantes are subset of entrega
-    const entregaKeys = new Set((editForm.entrega_participantes || []).map((ep: any) =>
-      ep.tipo_participante === 'setor' ? `s_${ep.setor_id}` : ep.tipo_participante))
+    // Validate: user's setor must be in entrega participantes
+    const entregaSetorIds = new Set((editForm.entrega_participantes || []).filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
     for (const ap of validP) {
-      const apKey = ap.tipo_participante === 'setor' ? `s_${ap.setor_id}` : ap.tipo_participante
-      if (!entregaKeys.has(apKey)) {
-        alert('Esta atividade inclui um participante que não está na entrega. Remova-o ou adicione-o à entrega primeiro.')
-        setSaving(false); return
+      if (ap.tipo_participante === 'usuario' && ap.user_id) {
+        const u = eligibleUsers.find((u: any) => u.id === ap.user_id)
+        if (u?.setor_id && !entregaSetorIds.has(u.setor_id)) {
+          alert(`O participante "${u.nome}" pertence a um setor que não está na entrega. Remova-o ou adicione o setor à entrega primeiro.`)
+          setSaving(false); return
+        }
       }
     }
 
     // Validate: no duplicates
-    const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
+    const pKeys = validP.map((p: any) => p.tipo_participante === 'usuario' ? `u_${p.user_id}` : (p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
     if (new Set(pKeys).size !== pKeys.length) {
-      alert('Há participantes duplicados nesta atividade. Use o campo "papel" para múltiplos papéis.')
+      alert('Há participantes duplicados nesta atividade.')
       setSaving(false); return
     }
 
@@ -670,7 +681,8 @@ export default function ProjetoDetalhePage() {
         status: editForm.status, motivo_status: editForm.motivo_status || null,
         responsavel_atividade_id: editForm.responsavel_atividade_id || null,
         participantes: validP.map((p: any) => ({
-          setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+          user_id: p.tipo_participante === 'usuario' ? p.user_id : null,
+          setor_id: p.setor_id,
           tipo_participante: p.tipo_participante, papel: p.papel.trim()
         })),
       }
@@ -713,7 +725,8 @@ export default function ProjetoDetalhePage() {
     if (validP.length > 0) {
       const { error: insAPErr } = await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
         atividade_id: realAtivId,
-        setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
+        user_id: p.tipo_participante === 'usuario' ? p.user_id : null,
+        setor_id: p.setor_id,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
       if (insAPErr) { alert(`Erro ao salvar participantes: ${insAPErr.message}`); setSaving(false); return }
@@ -827,12 +840,14 @@ export default function ProjetoDetalhePage() {
   }
 
   function participanteLabel(p: any) {
+    if (p.tipo_participante === 'usuario') return p.user?.nome || 'Usuário'
     if (p.tipo_participante === 'externo_subsegop') return 'Ator externo à SUBSEGOP'
     if (p.tipo_participante === 'externo_sedec') return 'Ator externo à SEDEC'
     return p.setor?.codigo || 'Setor'
   }
 
   function pKeyEdit(p: any) {
+    if (p.tipo_participante === 'usuario') return `u_${p.user_id}`
     return p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante
   }
 
@@ -863,30 +878,36 @@ export default function ProjetoDetalhePage() {
     )
   }
 
-  // Participante edit row for ATIVIDADE (only entrega participantes, no duplicates)
+  // Participante edit row for ATIVIDADE (usuários cujo setor está na entrega)
   function renderAtividadeParticipanteEditRow(p: any, idx: number, allParts: any[], entregaParts: any[], onChange: (i: number, f: string, v: any) => void, onRemove: (i: number) => void) {
-    const usedKeys = new Set(allParts.filter((_: any, i: number) => i !== idx).map(pKeyEdit))
+    const usedUserIds = new Set(allParts.filter((_: any, i: number) => i !== idx).filter((ap: any) => ap.user_id).map((ap: any) => ap.user_id))
+    const entregaSetorIds = new Set(entregaParts.filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
+    const filteredUsers = eligibleUsers.filter(u => {
+      if (usedUserIds.has(u.id)) return false
+      if (entregaSetorIds.size === 0) return false
+      return u.setor_id ? entregaSetorIds.has(u.setor_id) : false
+    })
+    const selectedUser = p.user_id ? eligibleUsers.find(u => u.id === p.user_id) : null
     return (
       <div key={idx} className="flex gap-2 items-start">
-        <select value={p.tipo_participante === 'setor' ? (p.setor_id || '') : p.tipo_participante}
-          onChange={ev => {
-            const v = ev.target.value
-            if (v === 'externo_subsegop' || v === 'externo_sedec') { onChange(idx, 'tipo_participante', v); onChange(idx, 'setor_id', null) }
-            else { onChange(idx, 'tipo_participante', 'setor'); onChange(idx, 'setor_id', parseInt(v) || null) }
-          }} className="input-field text-xs flex-1">
-          <option value="">Participante...</option>
-          {entregaParts.map((ep: any) => {
-            if (ep.tipo_participante === 'setor' && ep.setor_id) {
-              const s = setores.find((ss: any) => ss.id === ep.setor_id)
-              const k = `s_${ep.setor_id}`
-              return <option key={k} value={ep.setor_id} disabled={usedKeys.has(k)}>{s?.codigo || 'Setor'}{usedKeys.has(k) ? ' (já)' : ''}</option>
-            } else {
-              const label = ep.tipo_participante === 'externo_subsegop' ? 'Ext. SUBSEGOP' : 'Ext. SEDEC'
-              return <option key={ep.tipo_participante} value={ep.tipo_participante} disabled={usedKeys.has(ep.tipo_participante)}>{label}{usedKeys.has(ep.tipo_participante) ? ' (já)' : ''}</option>
-            }
-          })}
-          {entregaParts.length === 0 && <option disabled>Adicione participantes na entrega</option>}
-        </select>
+        <div className="flex-1 min-w-0">
+          <UserAutocompleteSelect
+            value={p.user_id || null}
+            onChange={userId => {
+              const u = userId ? eligibleUsers.find(u => u.id === userId) : null
+              onChange(idx, 'user_id', userId)
+              onChange(idx, 'setor_id', u?.setor_id || null)
+              onChange(idx, 'tipo_participante', 'usuario')
+            }}
+            users={p.user_id && selectedUser ? [selectedUser, ...filteredUsers] : filteredUsers}
+            placeholder="Selecione o participante..."
+          />
+        </div>
+        {selectedUser?.setor_codigo && (
+          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-2 rounded mt-0.5 shrink-0 font-medium">
+            {selectedUser.setor_codigo}
+          </span>
+        )}
         <input type="text" value={p.papel || ''} onChange={ev => onChange(idx, 'papel', ev.target.value)}
           placeholder="Papel na atividade" className="input-field text-xs flex-1" />
         <button type="button" onClick={() => onRemove(idx)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={13} /></button>
@@ -1724,7 +1745,7 @@ export default function ProjetoDetalhePage() {
                                           <button type="button" onClick={() => {
                                             if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
                                             setEditForm((prev: any) => ({
-                                              ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                                              ...prev, participantes: [...prev.participantes, { user_id: null, setor_id: null, tipo_participante: 'usuario', papel: '' }]
                                             }))
                                           }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
                                         </div>
@@ -1795,7 +1816,7 @@ export default function ProjetoDetalhePage() {
                                         <div className="flex flex-wrap gap-2 mt-3 pl-7">
                                           {a.atividade_participantes.map((p: any) => (
                                             <span key={p.id} className="text-[11px] bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded shadow-sm">
-                                              <span className="font-semibold">{participanteLabel(p)}</span>: {p.papel}
+                                              <span className="font-semibold">{participanteLabel(p)}</span>{p.tipo_participante === 'usuario' && p.setor && <span className="text-gray-400 text-[9px] ml-0.5">({p.setor.codigo})</span>}: {p.papel}
                                             </span>
                                           ))}
                                         </div>
@@ -1884,7 +1905,7 @@ export default function ProjetoDetalhePage() {
                                     <button type="button" onClick={() => {
                                       if (!editForm.entrega_participantes?.length) { alert('Adicione participantes na entrega primeiro.'); return }
                                       setEditForm((prev: any) => ({
-                                        ...prev, participantes: [...prev.participantes, { setor_id: null, tipo_participante: 'setor', papel: '' }]
+                                        ...prev, participantes: [...prev.participantes, { user_id: null, setor_id: null, tipo_participante: 'usuario', papel: '' }]
                                       }))
                                     }} className="text-[10px] text-orange-500 font-medium">+ Participante</button>
                                   </div>

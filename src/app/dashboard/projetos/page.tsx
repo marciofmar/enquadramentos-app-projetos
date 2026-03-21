@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 
@@ -27,6 +27,8 @@ interface ProjetoCard {
   responsavel_id: string | null
   responsaveis_entrega: string[]
   responsaveis_atividade: string[]
+  participantes_atividade: string[]
+  role_map: Record<string, { role: string; entidade_nome: string; deadline: string | null }[]>
   data_inicio: string | null
   created_at: string
   tie_entrega_inicio: string | null
@@ -67,7 +69,7 @@ export default function ProjetosPage() {
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
   const [acoes, setAcoes] = useState<{ numero: string; nome: string; oe_codigo: string }[]>([])
   const [setores, setSetores] = useState<{ id: number; codigo: string; nome_completo: string }[]>([])
-  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; setor_id: number | null; setor_codigo: string | null }[]>([])
 
   const router = useRouter()
   const supabase = createClient()
@@ -113,11 +115,14 @@ export default function ProjetosPage() {
 
     // Load eligible users for responsavel filter
     const { data: usersData } = await supabase.from('profiles')
-      .select('id, nome')
-      .in('role', ['gestor', 'master', 'admin'])
+      .select('id, nome, setor_id, setores:setor_id(codigo)')
+      .not('role', 'eq', 'solicitante')
       .eq('ativo', true)
       .order('nome')
-    if (usersData) setEligibleUsers(usersData)
+    if (usersData) setEligibleUsers(usersData.map((u: any) => ({
+      id: u.id, nome: u.nome,
+      setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
+    })))
 
     // Projects with all related data
     const { data: projData } = await supabase.from('projetos')
@@ -127,7 +132,7 @@ export default function ProjetosPage() {
         entregas(id, nome, data_final_prevista, status, responsavel_entrega_id,
           entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
           atividades(id, nome, data_prevista, status, responsavel_atividade_id,
-            atividade_participantes(setor_id, tipo_participante, setor:setor_id(codigo)))
+            atividade_participantes(setor_id, user_id, tipo_participante, setor:setor_id(codigo)))
         )`)
       .order('nome')
 
@@ -146,6 +151,34 @@ export default function ProjetosPage() {
           if (e.responsavel_entrega_id) respEntregaSet.add(e.responsavel_entrega_id)
           e.atividades?.forEach((a: any) => {
             if (a.responsavel_atividade_id) respAtividadeSet.add(a.responsavel_atividade_id)
+          })
+        })
+
+        // Collect atividade participant user IDs
+        const partAtividadeSet = new Set<string>()
+        p.entregas?.forEach((e: any) => {
+          e.atividades?.forEach((a: any) => {
+            a.atividade_participantes?.forEach((ap: any) => {
+              if (ap.user_id) partAtividadeSet.add(ap.user_id)
+            })
+          })
+        })
+
+        // Build role details for all involved users
+        type RoleDetail = { role: string; entidade_nome: string; deadline: string | null }
+        const roleMap = new Map<string, RoleDetail[]>()
+        const addRole = (uid: string, role: string, nome: string, deadline: string | null) => {
+          if (!roleMap.has(uid)) roleMap.set(uid, [])
+          roleMap.get(uid)!.push({ role, entidade_nome: nome, deadline })
+        }
+        if (p.responsavel_id) addRole(p.responsavel_id, 'Líder de projeto', '', null)
+        p.entregas?.forEach((e: any) => {
+          if (e.responsavel_entrega_id) addRole(e.responsavel_entrega_id, 'Resp. entrega', e.nome, e.data_final_prevista)
+          e.atividades?.forEach((a: any) => {
+            if (a.responsavel_atividade_id) addRole(a.responsavel_atividade_id, 'Resp. atividade', a.nome, a.data_prevista)
+            a.atividade_participantes?.forEach((ap: any) => {
+              if (ap.user_id) addRole(ap.user_id, 'Part. atividade', a.nome, a.data_prevista)
+            })
           })
         })
 
@@ -267,6 +300,8 @@ export default function ProjetosPage() {
           responsavel_id: p.responsavel_id || null,
           responsaveis_entrega: Array.from(respEntregaSet),
           responsaveis_atividade: Array.from(respAtividadeSet),
+          participantes_atividade: Array.from(partAtividadeSet),
+          role_map: Object.fromEntries(roleMap),
           data_inicio: p.data_inicio || null,
           created_at: p.created_at,
           tie_entrega_inicio: minEntregaInicio,
@@ -285,6 +320,13 @@ export default function ProjetosPage() {
     if (!oeFilter) return acoes
     return acoes.filter(a => a.oe_codigo === oeFilter)
   }, [acoes, oeFilter])
+
+  const filteredEligibleUsers = useMemo(() => {
+    if (!setorFilter) return eligibleUsers
+    const setorObj = setores.find((s: any) => s.codigo === setorFilter)
+    if (!setorObj) return eligibleUsers
+    return eligibleUsers.filter(u => u.setor_id === setorObj.id)
+  }, [eligibleUsers, setorFilter, setores])
 
   // When OE changes, reset acao filter
   useEffect(() => { setAcaoFilter('') }, [oeFilter])
@@ -314,7 +356,8 @@ export default function ProjetosPage() {
         const isLider = p.responsavel_id === responsavelFilter
         const isRespEntrega = p.responsaveis_entrega.includes(responsavelFilter)
         const isRespAtividade = p.responsaveis_atividade.includes(responsavelFilter)
-        if (!isLider && !isRespEntrega && !isRespAtividade) return false
+        const isPartAtividade = p.participantes_atividade.includes(responsavelFilter)
+        if (!isLider && !isRespEntrega && !isRespAtividade && !isPartAtividade) return false
       }
       if (showIncompleteOnly) {
         if (p.status_projeto !== 'em_andamento') return false
@@ -608,8 +651,8 @@ export default function ProjetosPage() {
             <UserAutocompleteSelect
               value={responsavelFilter || null}
               onChange={val => setResponsavelFilter(val || '')}
-              users={eligibleUsers}
-              placeholder="Todos os responsáveis"
+              users={filteredEligibleUsers}
+              placeholder="Responsável/Participante"
             />
           </div>
         </div>
@@ -703,6 +746,19 @@ export default function ProjetosPage() {
                           <Activity size={9} /> {p.atividades_atrasadas.length} ativ. atrasada{p.atividades_atrasadas.length > 1 ? 's' : ''}
                         </span>
                       )}
+                      {responsavelFilter && p.role_map[responsavelFilter] && (
+                        <div className="pt-1 border-t border-amber-200 space-y-0.5">
+                          {p.role_map[responsavelFilter].slice(0, 2).map((r, ri) => (
+                            <div key={ri} className="flex items-center gap-1 text-[9px] text-amber-700">
+                              <span className="font-medium">{r.role}</span>
+                              {r.entidade_nome && <span className="truncate text-amber-500" title={r.entidade_nome}>: {r.entidade_nome}</span>}
+                            </div>
+                          ))}
+                          {p.role_map[responsavelFilter].length > 2 && (
+                            <span className="text-[8px] text-amber-400">+{p.role_map[responsavelFilter].length - 2} mais</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </button>
                 )
@@ -790,6 +846,28 @@ export default function ProjetosPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Papéis do usuário filtrado */}
+                  {responsavelFilter && p.role_map[responsavelFilter] && (
+                    <div className="mt-2 pt-2 border-t border-amber-200 bg-amber-50/80 -mx-5 px-5 pb-1 space-y-0.5">
+                      {p.role_map[responsavelFilter].map((r, ri) => (
+                        <div key={ri} className="flex items-center gap-1.5 text-[10px] text-amber-800">
+                          {r.role === 'Líder de projeto' && <Crown size={10} className="shrink-0 text-amber-600" />}
+                          {r.role === 'Resp. entrega' && <Package size={10} className="shrink-0 text-amber-600" />}
+                          {r.role === 'Resp. atividade' && <Wrench size={10} className="shrink-0 text-amber-600" />}
+                          {r.role === 'Part. atividade' && <Users size={10} className="shrink-0 text-amber-600" />}
+                          <span className="font-medium">{r.role}</span>
+                          {r.entidade_nome && (
+                            <>
+                              <span className="text-amber-500">—</span>
+                              <span className="truncate" title={r.entidade_nome}>{r.entidade_nome}</span>
+                            </>
+                          )}
+                          {r.deadline && <span className="text-amber-500 shrink-0 ml-auto">{r.deadline.split('-').reverse().join('/')}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="mt-3 pt-2 border-t border-gray-100 flex items-center text-xs text-orange-600 font-medium group-hover:text-orange-700">
                     Ver detalhes <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
