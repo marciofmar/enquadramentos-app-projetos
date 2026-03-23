@@ -3,9 +3,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users, HelpCircle, Info } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
+import HelpTooltipModal, { type HelpType } from '@/components/HelpTooltipModal'
 
 interface ProjetoCard {
   id: number
@@ -55,6 +56,11 @@ export default function ProjetosPage() {
     if (!raw) return new Set<number>()
     return new Set(raw.split(',').map(Number).filter(n => !isNaN(n) && n > 0))
   }, [searchParams])
+  const alertaImpactoIds = useMemo(() => {
+    const raw = searchParams.get('alerta_impacto')
+    if (!raw) return new Set<number>()
+    return new Set(raw.split(',').map(Number).filter(n => !isNaN(n) && n > 0))
+  }, [searchParams])
 
   // Filters
   const [searchText, setSearchText] = useState('')
@@ -64,6 +70,7 @@ export default function ProjetosPage() {
   const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
   const [responsavelFilter, setResponsavelFilter] = useState('')
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(true)
+  const [helpType, setHelpType] = useState<HelpType>(null)
 
   // Reference data
   const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
@@ -85,9 +92,7 @@ export default function ProjetosPage() {
       const { data: p } = await supabase.from('profiles').select('*, setores:setor_id(codigo)').eq('id', user.id).single()
       if (p) {
         setProfile(p as any)
-        if (p.role !== 'admin' && p.role !== 'master' && p.setores?.codigo) {
-           setSetorFilter(p.setores.codigo)
-        }
+        // Visualização sem limitação de filtro — todos começam sem filtro de setor
       }
     }
 
@@ -129,7 +134,7 @@ export default function ProjetosPage() {
       .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-        entregas(id, nome, data_final_prevista, status, responsavel_entrega_id,
+        entregas(id, nome, data_final_prevista, status, responsavel_entrega_id, orgao_responsavel_setor_id,
           entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
           atividades(id, nome, data_prevista, status, responsavel_atividade_id,
             atividade_participantes(setor_id, user_id, tipo_participante, setor:setor_id(codigo)))
@@ -185,6 +190,11 @@ export default function ProjetosPage() {
         // Collect participante setores (unique)
         const setorSet = new Set<string>()
         p.entregas?.forEach((e: any) => {
+          // Include orgao responsavel as a participating sector
+          if (e.orgao_responsavel_setor_id) {
+            const setorResp = setoresData?.find((st: any) => st.id === e.orgao_responsavel_setor_id)
+            if (setorResp) setorSet.add(setorResp.codigo)
+          }
           e.entrega_participantes?.forEach((ep: any) => {
             if (ep.tipo_participante === 'setor' && ep.setor) setorSet.add(ep.setor.codigo)
             else if (ep.tipo_participante === 'externo_subsegop') setorSet.add('Ext. SUBSEGOP')
@@ -453,6 +463,7 @@ export default function ProjetosPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
             <FolderKanban size={24} className="text-orange-500" /> Gestão de Projetos
+            <button onClick={() => setHelpType('permissoes')} className="text-gray-400 hover:text-sedec-500" title="Regras de permissão"><HelpCircle size={18} /></button>
           </h1>
           <p className="text-gray-500 text-sm mt-1">Projetos vinculados às Ações Estratégicas Prioritárias</p>
         </div>
@@ -630,30 +641,45 @@ export default function ProjetosPage() {
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" placeholder="Buscar projeto..." value={searchText}
-                onChange={e => setSearchText(e.target.value)} className="input-field pl-9" />
+                onChange={e => setSearchText(e.target.value)} className="input-field pl-9" title="Busca por nome do projeto" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 cursor-help" title="Busca por nome do projeto"><Info size={12} /></span>
             </div>
-            <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
-              <option value="">Todos os objetivos</option>
-              {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
-            </select>
-            <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field">
-              <option value="">Todas as ações</option>
-              {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>AE {a.numero}</option>)}
-            </select>
-            <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
-              <option value="">Todos os setores</option>
-              {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
-            </select>
-            <select value={tipoAcaoFilter} onChange={e => setTipoAcaoFilter(e.target.value)} className="input-field">
-              <option value="">Todos os tipos de ação</option>
-              {['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração'].map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <UserAutocompleteSelect
-              value={responsavelFilter || null}
-              onChange={val => setResponsavelFilter(val || '')}
-              users={filteredEligibleUsers}
-              placeholder="Responsável/Participante"
-            />
+            <div className="relative">
+              <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field" title="Filtra projetos vinculados ao objetivo estratégico selecionado">
+                <option value="">Todos os objetivos</option>
+                {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
+              </select>
+              <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none" title="Filtra projetos vinculados ao objetivo estratégico selecionado"><Info size={12} /></span>
+            </div>
+            <div className="relative">
+              <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field" title="Filtra projetos vinculados à ação estratégica selecionada (depende do filtro de objetivo)">
+                <option value="">Todas as ações</option>
+                {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>AE {a.numero}</option>)}
+              </select>
+              <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none" title="Filtra projetos vinculados à ação estratégica selecionada (depende do filtro de objetivo)"><Info size={12} /></span>
+            </div>
+            <div className="relative">
+              <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field" title="Filtra por setor líder, setor responsável pela entrega ou setores participantes">
+                <option value="">Todos os setores</option>
+                {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
+              </select>
+              <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none" title="Filtra por setor líder, setor responsável pela entrega ou setores participantes"><Info size={12} /></span>
+            </div>
+            <div className="relative">
+              <select value={tipoAcaoFilter} onChange={e => setTipoAcaoFilter(e.target.value)} className="input-field" title="Filtra pelo tipo de ação estratégica vinculada ao projeto">
+                <option value="">Todos os tipos de ação</option>
+                {['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração'].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none" title="Filtra pelo tipo de ação estratégica vinculada ao projeto"><Info size={12} /></span>
+            </div>
+            <div className="relative" title="Filtra projetos onde o usuário é líder do projeto, responsável ou participante de entrega/atividade">
+              <UserAutocompleteSelect
+                value={responsavelFilter || null}
+                onChange={val => setResponsavelFilter(val || '')}
+                users={filteredEligibleUsers}
+                placeholder="Responsável/Participante"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -714,11 +740,12 @@ export default function ProjetosPage() {
               const pont = PONT_CONFIG[pontKey]
               const PontIcon = pont.icon
               const isAlerta = alertaIds.has(p.id)
+              const isAlertaImpacto = alertaImpactoIds.has(p.id)
 
               if (viewMode === 'compact') {
                 return (
                   <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
-                    className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : ''}`}>
+                    className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : isAlertaImpacto ? 'ring-2 ring-amber-400 ring-offset-1 bg-amber-50/40 animate-pulse' : ''}`}>
                     <div className="flex items-start justify-between gap-1 mb-1">
                       <h3 className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2 group-hover:line-clamp-none">
                         {p.nome}
@@ -767,7 +794,7 @@ export default function ProjetosPage() {
               // Normal view
               return (
                 <button key={p.id} onClick={() => router.push(`/dashboard/projetos/${p.id}`)}
-                  className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : ''}`}>
+                  className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : isAlertaImpacto ? 'ring-2 ring-amber-400 ring-offset-1 bg-amber-50/40 animate-pulse' : ''}`}>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="text-sm font-semibold text-gray-800 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
                       {p.nome}
@@ -879,6 +906,7 @@ export default function ProjetosPage() {
         </div>
         )
       })}
+      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} userRole={profile?.role} />
     </div>
   )
 }

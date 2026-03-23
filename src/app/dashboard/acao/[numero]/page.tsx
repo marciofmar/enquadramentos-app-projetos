@@ -261,7 +261,7 @@ export default function AcaoPage() {
                     setObsForm={setObsForm}
                     submitObs={submitObs}
                     sending={sending}
-                    podecriar={obsPermitida}
+                    podecriar={obsPermitida && profile?.role !== 'usuario'}
                   />
                 )}
               </div>

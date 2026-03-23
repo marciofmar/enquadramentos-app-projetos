@@ -3,14 +3,15 @@
 import { X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
-export type HelpType = 'projeto' | 'entrega' | 'atividade' | null
+export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes' | null
 
 interface Props {
   type: HelpType
   onClose: () => void
+  userRole?: string
 }
 
-export default function HelpTooltipModal({ type, onClose }: Props) {
+export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -97,6 +98,57 @@ export default function HelpTooltipModal({ type, onClose }: Props) {
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
             <p className="mb-2"><span className="font-bold">Atenção:</span> Toda Atividade deve estar vinculada a uma Entrega. Se você não consegue identificar claramente qual Entrega ela alimenta, revise o enquadramento antes de salvar — isso é sinal de que o cadastro ainda não está bem estruturado.</p>
             <p>Se o que você quer registrar pode ser auditado como produto concreto (um documento aprovado, um sistema implantado, um treinamento concluído) — é uma <span className="font-bold">Entrega</span>, não uma Atividade.</p>
+          </div>
+        </div>
+      )
+    },
+    permissoes: {
+      title: 'Regras de Permissão por Perfil',
+      body: (
+        <div className="space-y-5 text-sm text-gray-700 leading-relaxed">
+          {(userRole === 'admin' || userRole === 'master') && (
+            <>
+              <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                <p className="font-bold text-red-900 mb-1">Admin</p>
+                <p className="text-red-800">Acesso total a todas as funcionalidades do sistema.</p>
+              </div>
+
+              <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                <p className="font-bold text-orange-900 mb-1">Master</p>
+                <p className="text-orange-800">Tudo do Admin, exceto: excluir usuários, editar nome/perfil/setor de usuários, gerenciar setores, zerar senhas e configurações de observações.</p>
+              </div>
+            </>
+          )}
+
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <p className="font-bold text-blue-900 mb-2">Gestor <span className="font-normal text-blue-700">(5 níveis, condicionados às configurações do sistema)</span></p>
+            <ul className="list-disc pl-5 space-y-2 text-blue-800">
+              <li><span className="font-semibold">Nível 1</span> — Qualquer gestor: pode criar projeto (se configuração ativa)</li>
+              <li><span className="font-semibold">Nível 2</span> — Gestor do setor líder do projeto: cria/edita/exclui o projeto e suas entregas</li>
+              <li><span className="font-semibold">Nível 3</span> — Gestor do setor responsável pela entrega: cria/edita/exclui atividades daquela entrega</li>
+              <li><span className="font-semibold">Nível 4</span> — Nível 3, mas setor diferente do líder: edita a entrega, exceto nome e descrição</li>
+              <li><span className="font-semibold">Nível 5</span> — Responsável pela atividade (setor diferente do responsável da entrega): edita a atividade, exceto nome e descrição</li>
+            </ul>
+            <p className="mt-2 text-blue-700">Pode criar observações (se configuração ativa).</p>
+          </div>
+
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+            <p className="font-bold text-green-900 mb-1">Usuário</p>
+            <p className="text-green-800">Somente visualização. Pode editar o próprio perfil. Não cria observações.</p>
+          </div>
+
+          <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
+            <p className="font-bold text-gray-800 mb-1">Solicitante</p>
+            <p className="text-gray-600">Sem acesso ao sistema (redirecionado para página de pendência).</p>
+          </div>
+
+          <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+            <p className="font-bold text-purple-900 mb-2">Regras de Atribuição de Responsáveis</p>
+            <ul className="list-disc pl-5 space-y-1 text-purple-800">
+              <li>O responsável pela entrega deve ser um usuário do setor responsável pela entrega (órgão responsável).</li>
+              <li>O responsável pela atividade deve ser um usuário de um dos setores participantes da entrega.</li>
+              <li>Os participantes da atividade devem ser usuários de setores participantes da entrega.</li>
+            </ul>
           </div>
         </div>
       )

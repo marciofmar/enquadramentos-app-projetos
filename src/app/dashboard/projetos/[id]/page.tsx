@@ -78,7 +78,7 @@ export default function ProjetoDetalhePage() {
   const [allExpanded, setAllExpanded] = useState(false)
 
   const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
-  const [showGestorModal, setShowGestorModal] = useState(false)
+  const [showGestorModal, setShowGestorModal] = useState<false | ('gestor' | 'usuario')[]>(false)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -167,21 +167,38 @@ export default function ProjetoDetalhePage() {
     setLoading(false)
   }
 
-  // Permission checks — granulares por tipo de entidade
+  // Permission checks — granulares por tipo de entidade (5 níveis)
   const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
-  const isGestorDoSetor = profile?.role === 'gestor' && profile.setor_id === projeto?.setor_lider_id
+  const isGestor = profile?.role === 'gestor'
+  const isSetorLider = isGestor && profile?.setor_id === projeto?.setor_lider_id
 
-  // Projetos e Entregas
-  const canCreateProjeto = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro'] !== 'false')
-  const canEditProjeto = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao'] !== 'false')
+  // Level 1+2: Project and entregas (setor líder)
+  const canCreateProjeto = isAdminOrMaster || (isGestor && configs['proj_permitir_cadastro'] !== 'false')
+  const canEditProjeto = isAdminOrMaster || (isSetorLider && configs['proj_permitir_edicao'] !== 'false')
 
-  // Atividades
-  const canCreateAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_cadastro_atividades'] !== 'false')
-  const canEditAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_atividades'] !== 'false')
+  // Per-entrega permissions (Levels 2-4)
+  function getEntregaPerms(entrega: any) {
+    const isSetorResp = isGestor && profile?.setor_id === entrega?.orgao_responsavel_setor_id
+    return {
+      canFull: isAdminOrMaster || (isSetorLider && configs['proj_permitir_edicao'] !== 'false'),
+      canEditLimited: !isSetorLider && isSetorResp && configs['proj_permitir_edicao'] !== 'false',
+      canEditDatas: isAdminOrMaster || ((isSetorLider || isSetorResp) && configs['proj_permitir_edicao_datas'] !== 'false'),
+      canCrudAtividades: isAdminOrMaster || (isSetorResp && configs['proj_permitir_edicao_atividades'] !== 'false'),
+      canCreateAtividades: isAdminOrMaster || (isSetorResp && configs['proj_permitir_cadastro_atividades'] !== 'false'),
+      canEditDatasAtividades: isAdminOrMaster || ((isSetorResp) && configs['proj_permitir_edicao_datas_atividades'] !== 'false'),
+      needsApproval: !isAdminOrMaster && (isSetorLider || isSetorResp) && configs['proj_exigir_aprovacao_edicao'] === 'true',
+    }
+  }
 
-  // Datas (independentes da edição geral)
-  const canEditDataEntrega = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_datas'] !== 'false')
-  const canEditDataAtividade = isAdminOrMaster || (isGestorDoSetor && configs['proj_permitir_edicao_datas_atividades'] !== 'false')
+  // Per-atividade permissions (Levels 3-5)
+  function getAtividadePerms(atividade: any, entregaPerms: ReturnType<typeof getEntregaPerms>) {
+    const isRespAtividade = isGestor && profile?.id === atividade?.responsavel_atividade_id
+    return {
+      canFull: entregaPerms.canCrudAtividades,
+      canEditLimited: !entregaPerms.canCrudAtividades && isRespAtividade && configs['proj_permitir_edicao_atividades'] !== 'false',
+      canEditDatas: entregaPerms.canEditDatasAtividades || (isRespAtividade && configs['proj_permitir_edicao_datas_atividades'] !== 'false'),
+    }
+  }
 
   // Pontualidade
   const pontualidade = useMemo(() => {
@@ -203,8 +220,8 @@ export default function ProjetoDetalhePage() {
     return 'em_andamento'
   }, [projeto])
 
-  // Gestores precisam de aprovação para editar/excluir (somente se configuração = 'true')
-  const needsApproval = !isAdminOrMaster && isGestorDoSetor && configs['proj_exigir_aprovacao_edicao'] === 'true'
+  // needsApproval for project-level operations (setor líder)
+  const needsApprovalProjeto = !isAdminOrMaster && isSetorLider && configs['proj_exigir_aprovacao_edicao'] === 'true'
 
   function hasPendingSolicitacao(tipoEntidade: string, entidadeId: number) {
     return solicitacoes.some(s => s.tipo_entidade === tipoEntidade && s.entidade_id === entidadeId && s.status === 'em_analise')
@@ -298,7 +315,7 @@ export default function ProjetoDetalhePage() {
       }
     }
 
-    if (needsApproval) {
+    if (needsApprovalProjeto) {
       if (hasPendingSolicitacao('projeto', projeto.id)) {
         alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
         setSaving(false); return
@@ -344,11 +361,41 @@ export default function ProjetoDetalhePage() {
     }
 
     await auditLog('update', 'projeto', projeto.id, anterior, novosDados)
+
+    // Alerta quando setor_lider_id muda
+    const oldSetorLiderId = projeto.setor_lider_id
+    const newSetorLiderId = novosDados.setor_lider_id
+    if (oldSetorLiderId && newSetorLiderId && oldSetorLiderId !== newSetorLiderId) {
+      const oldSetorNome = setores.find((s: any) => s.id === oldSetorLiderId)?.codigo || 'Setor anterior'
+      const newSetorNome = setores.find((s: any) => s.id === newSetorLiderId)?.codigo || 'Novo setor'
+      const descAlerta = `O setor líder do projeto "${projeto.nome}" foi alterado de ${oldSetorNome} para ${newSetorNome}`
+
+      const { data: gestoresOldSetor } = await supabase.from('profiles')
+        .select('id').eq('setor_id', oldSetorLiderId).eq('role', 'gestor')
+      const { data: gestoresNewSetor } = await supabase.from('profiles')
+        .select('id').eq('setor_id', newSetorLiderId).eq('role', 'gestor')
+
+      const allGestores = [...(gestoresOldSetor || []), ...(gestoresNewSetor || [])]
+        .filter((g: any) => g.id !== profile!.id)
+      const uniqueGestorIds = Array.from(new Set(allGestores.map((g: any) => g.id)))
+
+      if (uniqueGestorIds.length > 0) {
+        await supabase.from('alertas').insert(uniqueGestorIds.map(gId => ({
+          destinatario_id: gId,
+          tipo: 'alteracao_setor_lider',
+          entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: descAlerta
+        })))
+      }
+    }
+
     setEditingProjeto(false); setSaving(false); loadAll()
   }
 
   async function deleteProject() {
-    if (needsApproval) {
+    if (needsApprovalProjeto) {
       if (hasPendingSolicitacao('projeto', projeto.id)) {
         alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
         return
@@ -359,7 +406,17 @@ export default function ProjetoDetalhePage() {
     }
 
     if (!confirm(`Excluir o projeto "${projeto.nome}"?\n\nTodas as entregas e atividades serão excluídas permanentemente.`)) return
-    await auditLog('delete', 'projeto', projeto.id, { nome: projeto.nome }, null)
+    const snapshot = {
+      projeto: { nome: projeto.nome, descricao: projeto.descricao, setor_lider_id: projeto.setor_lider_id },
+      entregas: (projeto.entregas || []).map((e: any) => ({
+        nome: e.nome, descricao: e.descricao, orgao_responsavel_setor_id: e.orgao_responsavel_setor_id,
+        responsavel_entrega_id: e.responsavel_entrega_id,
+        atividades: (e.atividades || []).map((a: any) => ({
+          nome: a.nome, responsavel_atividade_id: a.responsavel_atividade_id
+        }))
+      }))
+    }
+    await auditLog('delete', 'projeto', projeto.id, snapshot, null)
     await supabase.from('projetos').delete().eq('id', projeto.id)
     router.push('/dashboard/projetos')
   }
@@ -454,7 +511,9 @@ export default function ProjetoDetalhePage() {
       }
     }
 
-    if (needsApproval) {
+    const ePerms = getEntregaPerms(entrega)
+
+    if (ePerms.needsApproval) {
       if (hasPendingSolicitacao('entrega', entregaId)) {
         alert('Já existe uma solicitação pendente para esta entrega. Aguarde a avaliação.')
         setSaving(false); return
@@ -512,11 +571,54 @@ export default function ProjetoDetalhePage() {
     }
 
     await auditLog('update', 'entrega', entregaId, anteriorE, novosDadosE)
+
+    // Alerta para o responsável pela entrega (se diferente do usuário atual)
+    if (profile!.id !== entrega.responsavel_entrega_id && entrega.responsavel_entrega_id) {
+      await supabase.from('alertas').insert({
+        destinatario_id: entrega.responsavel_entrega_id,
+        tipo: 'edicao_entrega',
+        entidade: 'entrega', entidade_id: entrega.id, entidade_nome: entrega.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Entrega "${entrega.nome}" foi editada por ${profile!.nome}`
+      })
+    }
+
+    // Alerta quando orgao_responsavel_setor_id muda
+    const oldSetorId = entrega?.orgao_responsavel_setor_id
+    const newSetorId = novosDadosE.orgao_responsavel_setor_id
+    if (oldSetorId && newSetorId && oldSetorId !== newSetorId) {
+      const oldSetorNome = setores.find((s: any) => s.id === oldSetorId)?.codigo || 'Setor anterior'
+      const newSetorNome = setores.find((s: any) => s.id === newSetorId)?.codigo || 'Novo setor'
+      const descAlerta = `O setor responsável da entrega "${entrega.nome}" foi alterado de ${oldSetorNome} para ${newSetorNome}`
+
+      const { data: gestoresOldSetor } = await supabase.from('profiles')
+        .select('id').eq('setor_id', oldSetorId).eq('role', 'gestor')
+      const { data: gestoresNewSetor } = await supabase.from('profiles')
+        .select('id').eq('setor_id', newSetorId).eq('role', 'gestor')
+
+      const allGestores = [...(gestoresOldSetor || []), ...(gestoresNewSetor || [])]
+        .filter((g: any) => g.id !== profile!.id)
+      const uniqueGestorIds = Array.from(new Set(allGestores.map((g: any) => g.id)))
+
+      if (uniqueGestorIds.length > 0) {
+        await supabase.from('alertas').insert(uniqueGestorIds.map(gId => ({
+          destinatario_id: gId,
+          tipo: 'alteracao_setor_entrega',
+          entidade: 'entrega', entidade_id: entrega.id, entidade_nome: entrega.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: descAlerta
+        })))
+      }
+    }
+
     setEditingEntrega(null); setSaving(false); loadAll()
   }
 
   async function deleteEntrega(e: any) {
-    if (needsApproval) {
+    const ePerms = getEntregaPerms(e)
+    if (ePerms.needsApproval) {
       if (hasPendingSolicitacao('entrega', e.id)) {
         alert('Já existe uma solicitação pendente para esta entrega. Aguarde a avaliação.')
         return
@@ -526,8 +628,41 @@ export default function ProjetoDetalhePage() {
       loadAll(); return
     }
 
+    // Check for pending solicitacoes on child atividades
+    const childAtividadeIds = (e.atividades || []).map((a: any) => a.id).filter(Boolean)
+    if (childAtividadeIds.length > 0) {
+      const { data: pendingSols } = await supabase
+        .from('solicitacoes_alteracao')
+        .select('id, tipo_entidade, entidade_nome')
+        .in('entidade_id', childAtividadeIds)
+        .eq('status', 'em_analise')
+      if (pendingSols && pendingSols.length > 0) {
+        if (!confirm(`Há ${pendingSols.length} solicitação(ões) de alteração pendentes que serão canceladas. Continua?`)) return
+      }
+    }
+
     if (!confirm(`Excluir a entrega "${e.nome}"?\n\nTodas as atividades desta entrega serão excluídas.`)) return
-    await auditLog('delete', 'entrega', e.id, { nome: e.nome }, null)
+    const entregaSnapshot = {
+      nome: e.nome, descricao: e.descricao, orgao_responsavel_setor_id: e.orgao_responsavel_setor_id,
+      responsavel_entrega_id: e.responsavel_entrega_id,
+      atividades: (e.atividades || []).map((a: any) => ({
+        nome: a.nome, responsavel_atividade_id: a.responsavel_atividade_id
+      }))
+    }
+    await auditLog('delete', 'entrega', e.id, entregaSnapshot, null)
+
+    // Alerta para o responsável pela entrega (se diferente do usuário atual)
+    if (profile!.id !== e.responsavel_entrega_id && e.responsavel_entrega_id) {
+      await supabase.from('alertas').insert({
+        destinatario_id: e.responsavel_entrega_id,
+        tipo: 'exclusao_entrega',
+        entidade: 'entrega', entidade_id: e.id, entidade_nome: e.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Entrega "${e.nome}" foi excluída por ${profile!.nome}`
+      })
+    }
+
     await supabase.from('entregas').delete().eq('id', e.id)
     loadAll()
   }
@@ -669,7 +804,10 @@ export default function ProjetoDetalhePage() {
       setSaving(false); return
     }
 
-    if (needsApproval && !isNew) {
+    const entregaForAtiv = projeto.entregas?.find((en: any) => en.id === entregaId)
+    const ePermsAtiv = getEntregaPerms(entregaForAtiv)
+
+    if (ePermsAtiv.needsApproval && !isNew) {
       if (hasPendingSolicitacao('atividade', ativId)) {
         alert('Já existe uma solicitação pendente para esta atividade. Aguarde a avaliação.')
         setSaving(false); return
@@ -733,7 +871,7 @@ export default function ProjetoDetalhePage() {
     }
 
     // Regras de coerência de status entrega ↔ atividades (somente para saves diretos, não para solicitações)
-    if (!needsApproval || isNew) {
+    if (!ePermsAtiv.needsApproval || isNew) {
       const entrega = projeto.entregas.find((e: any) => e.id === entregaId)
       if (entrega) {
         const statusNaoTerminal = !['resolvida', 'cancelada'].includes(editForm.status)
@@ -783,11 +921,40 @@ export default function ProjetoDetalhePage() {
       }
     }
 
+    // Alertas para responsáveis (se diferente do usuário atual)
+    if (!isNew && entregaForAtiv) {
+      const ativAtual = entregaForAtiv.atividades?.find((at: any) => at.id === realAtivId)
+      // Alerta para o responsável pela atividade
+      if (ativAtual?.responsavel_atividade_id && profile!.id !== ativAtual.responsavel_atividade_id) {
+        await supabase.from('alertas').insert({
+          destinatario_id: ativAtual.responsavel_atividade_id,
+          tipo: 'edicao_atividade',
+          entidade: 'atividade', entidade_id: realAtivId, entidade_nome: editForm.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: `Atividade "${editForm.nome}" foi editada por ${profile!.nome}`
+        })
+      }
+      // Alerta para o responsável pela entrega (se diferente do atual e do resp. atividade)
+      if (entregaForAtiv.responsavel_entrega_id && profile!.id !== entregaForAtiv.responsavel_entrega_id && entregaForAtiv.responsavel_entrega_id !== ativAtual?.responsavel_atividade_id) {
+        await supabase.from('alertas').insert({
+          destinatario_id: entregaForAtiv.responsavel_entrega_id,
+          tipo: 'edicao_atividade',
+          entidade: 'atividade', entidade_id: realAtivId, entidade_nome: editForm.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: `Atividade "${editForm.nome}" da entrega "${entregaForAtiv.nome}" foi editada por ${profile!.nome}`
+        })
+      }
+    }
+
     setEditingAtividade(null); setSaving(false); loadAll()
   }
 
-  async function deleteAtividade(a: any) {
-    if (needsApproval) {
+  async function deleteAtividade(a: any, entregaParent?: any) {
+    const entregaDel = entregaParent || projeto.entregas?.find((en: any) => en.atividades?.some((at: any) => at.id === a.id))
+    const ePermsDel = getEntregaPerms(entregaDel)
+    if (ePermsDel.needsApproval) {
       if (hasPendingSolicitacao('atividade', a.id)) {
         alert('Já existe uma solicitação pendente para esta atividade. Aguarde a avaliação.')
         return
@@ -799,6 +966,29 @@ export default function ProjetoDetalhePage() {
 
     if (!confirm(`Excluir a atividade "${a.nome}"?`)) return
     await auditLog('delete', 'atividade', a.id, { nome: a.nome }, null)
+
+    // Alertas para responsáveis
+    if (a.responsavel_atividade_id && profile!.id !== a.responsavel_atividade_id) {
+      await supabase.from('alertas').insert({
+        destinatario_id: a.responsavel_atividade_id,
+        tipo: 'exclusao_atividade',
+        entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Atividade "${a.nome}" foi excluída por ${profile!.nome}`
+      })
+    }
+    if (entregaDel?.responsavel_entrega_id && profile!.id !== entregaDel.responsavel_entrega_id && entregaDel.responsavel_entrega_id !== a.responsavel_atividade_id) {
+      await supabase.from('alertas').insert({
+        destinatario_id: entregaDel.responsavel_entrega_id,
+        tipo: 'exclusao_atividade',
+        entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Atividade "${a.nome}" da entrega "${entregaDel.nome}" foi excluída por ${profile!.nome}`
+      })
+    }
+
     await supabase.from('atividades').delete().eq('id', a.id)
     loadAll()
   }
@@ -901,6 +1091,8 @@ export default function ProjetoDetalhePage() {
             }}
             users={p.user_id && selectedUser ? [selectedUser, ...filteredUsers] : filteredUsers}
             placeholder="Selecione o participante..."
+            onRegisterNew={() => setShowGestorModal(['gestor', 'usuario'])}
+            registerNewLabel="Cadastrar novo usuário"
           />
         </div>
         {selectedUser?.setor_codigo && (
@@ -925,7 +1117,7 @@ export default function ProjetoDetalhePage() {
   return (
     <div>
       <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
-      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} />
+      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} userRole={profile?.role} />
       <div className="flex items-center justify-between mb-4">
         <button onClick={() => router.push('/dashboard/projetos')}
           className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700">
@@ -945,6 +1137,14 @@ export default function ProjetoDetalhePage() {
         <div className={`p-6 ${editingProjeto ? 'bg-blue-50/20' : ''}`}>
           {editingProjeto ? (
             <div className="space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Modo de edição</span>
+                </div>
+                <button type="button" onClick={() => setHelpType('permissoes')} className="flex items-center gap-1.5 text-xs text-sedec-500 hover:text-sedec-700 bg-sedec-50 hover:bg-sedec-100 px-3 py-1.5 rounded-lg transition-colors font-medium border border-sedec-200" title="Regras de permissão">
+                  <HelpCircle size={14} /> Regras de permissão
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome do projeto</label>
@@ -974,7 +1174,7 @@ export default function ProjetoDetalhePage() {
                     placeholder="Selecione o líder..."
                     required
                     disabled={!canEditProjeto}
-                    onRegisterNew={() => setShowGestorModal(true)}
+                    onRegisterNew={() => setShowGestorModal(['gestor'])}
                   />
                 </div>
 
@@ -1084,14 +1284,19 @@ export default function ProjetoDetalhePage() {
                 {hasPendingSolicitacao('projeto', projeto.id) && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 animate-pulse">Aguardando aprovação</span>
                 )}
-                {canEditProjeto && (
-                  <div className="flex gap-2 shrink-0">
-                    <button onClick={startEditProjeto} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors font-medium" title="Editar"><Edit3 size={15} /> Editar</button>
-                    {(isAdminOrMaster || canEditProjeto) && (
-                      <button onClick={deleteProject} className="flex items-center gap-1 text-sm bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium" title="Excluir"><Trash2 size={15} /> Excluir</button>
-                    )}
-                  </div>
-                )}
+                <div className="flex gap-2 shrink-0 items-center">
+                  <button type="button" onClick={() => setHelpType('permissoes')} className="flex items-center gap-1.5 text-xs text-sedec-500 hover:text-sedec-700 bg-sedec-50 hover:bg-sedec-100 px-2.5 py-1.5 rounded-lg transition-colors font-medium border border-sedec-200" title="Regras de permissão">
+                    <HelpCircle size={14} /> Permissões
+                  </button>
+                  {canEditProjeto && (
+                    <>
+                      <button onClick={startEditProjeto} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors font-medium" title="Editar"><Edit3 size={15} /> Editar</button>
+                      {(isAdminOrMaster || canEditProjeto) && (
+                        <button onClick={deleteProject} className="flex items-center gap-1 text-sm bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors font-medium" title="Excluir"><Trash2 size={15} /> Excluir</button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               {(projeto.responsavel_id || projeto.data_inicio) && (
@@ -1245,7 +1450,13 @@ export default function ProjetoDetalhePage() {
                   <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
                   <select
                     value={newEntregaForm.orgao_responsavel_setor_id || ''}
-                    onChange={ev => setNewEntregaForm({ ...newEntregaForm, orgao_responsavel_setor_id: ev.target.value ? parseInt(ev.target.value) : null })}
+                    onChange={ev => {
+                      const newSetorId = ev.target.value ? parseInt(ev.target.value) : null
+                      const currentResp = newEntregaForm.responsavel_entrega_id
+                      const respUser = currentResp ? eligibleUsers.find(u => u.id === currentResp) : null
+                      const shouldClear = currentResp && newSetorId && respUser && respUser.setor_id !== newSetorId
+                      setNewEntregaForm({ ...newEntregaForm, orgao_responsavel_setor_id: newSetorId, ...(shouldClear ? { responsavel_entrega_id: '' } : {}) })
+                    }}
                     className="input-field text-xs">
                     <option value="">Selecione...</option>
                     {(newEntregaForm.participantes || [])
@@ -1264,9 +1475,9 @@ export default function ProjetoDetalhePage() {
                   <UserAutocompleteSelect
                     value={newEntregaForm.responsavel_entrega_id}
                     onChange={val => setNewEntregaForm({...newEntregaForm, responsavel_entrega_id: val})}
-                    users={eligibleUsers}
+                    users={eligibleUsers.filter(u => u.id === newEntregaForm.responsavel_entrega_id || (!newEntregaForm.orgao_responsavel_setor_id || u.setor_id === newEntregaForm.orgao_responsavel_setor_id))}
                     placeholder="Selecione o responsável..."
-                    onRegisterNew={() => setShowGestorModal(true)}
+                    onRegisterNew={() => setShowGestorModal(['gestor'])}
                   />
                 </div>
               </div>
@@ -1364,6 +1575,7 @@ export default function ProjetoDetalhePage() {
           const now = new Date(); now.setHours(0, 0, 0, 0)
           const isAtrasada = e.data_final_prevista && e.status !== 'resolvida' && e.status !== 'cancelada' && new Date(e.data_final_prevista) < now
           const st = STATUS_ENTREGA[e.status] || STATUS_ENTREGA.aberta
+          const ePerms = getEntregaPerms(e)
 
           return (
             <div key={e.id} className={`bg-white rounded-xl border overflow-hidden ${
@@ -1401,11 +1613,11 @@ export default function ProjetoDetalhePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {(canEditProjeto || canEditDataEntrega) && (
+                  {(ePerms.canFull || ePerms.canEditLimited || ePerms.canEditDatas) && (
                     <>
                       <button onClick={(ev) => { ev.stopPropagation(); isEditing ? setEditingEntrega(null) : startEditEntrega(e) }}
                         className="text-gray-400 hover:text-orange-500"><Edit3 size={15} /></button>
-                      {canEditProjeto && <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
+                      {ePerms.canFull && <button onClick={(ev) => { ev.stopPropagation(); deleteEntrega(e) }}
                         className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>}
                     </>
                   )}
@@ -1422,18 +1634,18 @@ export default function ProjetoDetalhePage() {
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome</label>
                         <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                          disabled={!canEditProjeto} className="input-field text-sm" placeholder="Nome da entrega" />
+                          disabled={!ePerms.canFull} className="input-field text-sm" placeholder="Nome da entrega" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
                         <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                          disabled={!canEditProjeto} className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+                          disabled={!ePerms.canFull} className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
                         <textarea value={editForm.criterios_aceite || ''}
                           onChange={ev => setEditForm({ ...editForm, criterios_aceite: ev.target.value })}
-                          disabled={!canEditProjeto} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
+                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
                       </div>
 
                       {/* Órgão responsável + Responsável */}
@@ -1442,8 +1654,14 @@ export default function ProjetoDetalhePage() {
                           <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
                           <select
                             value={editForm.orgao_responsavel_setor_id || ''}
-                            onChange={ev => setEditForm({ ...editForm, orgao_responsavel_setor_id: ev.target.value ? parseInt(ev.target.value) : null })}
-                            disabled={!canEditProjeto}
+                            onChange={ev => {
+                              const newSetorId = ev.target.value ? parseInt(ev.target.value) : null
+                              const currentResp = editForm.responsavel_entrega_id
+                              const respUser = currentResp ? eligibleUsers.find(u => u.id === currentResp) : null
+                              const shouldClear = currentResp && newSetorId && respUser && respUser.setor_id !== newSetorId
+                              setEditForm({ ...editForm, orgao_responsavel_setor_id: newSetorId, ...(shouldClear ? { responsavel_entrega_id: '' } : {}) })
+                            }}
+                            disabled={!(ePerms.canFull || ePerms.canEditLimited)}
                             className="input-field text-xs">
                             <option value="">Selecione...</option>
                             {(editForm.participantes || [])
@@ -1462,10 +1680,10 @@ export default function ProjetoDetalhePage() {
                           <UserAutocompleteSelect
                             value={editForm.responsavel_entrega_id}
                             onChange={val => setEditForm({...editForm, responsavel_entrega_id: val})}
-                            users={eligibleUsers}
+                            users={eligibleUsers.filter(u => u.id === editForm.responsavel_entrega_id || (!editForm.orgao_responsavel_setor_id || u.setor_id === editForm.orgao_responsavel_setor_id))}
                             placeholder="Selecione o responsável..."
-                            disabled={!canEditProjeto}
-                            onRegisterNew={() => setShowGestorModal(true)}
+                            disabled={!(ePerms.canFull || ePerms.canEditLimited)}
+                            onRegisterNew={() => setShowGestorModal(['gestor'])}
                           />
                         </div>
                       </div>
@@ -1476,7 +1694,7 @@ export default function ProjetoDetalhePage() {
                           <div className="min-w-[160px]">
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
                             <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                              disabled={!canEditProjeto}
+                              disabled={!(ePerms.canFull || ePerms.canEditLimited)}
                               className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
                                 editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
                                 editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
@@ -1492,7 +1710,7 @@ export default function ProjetoDetalhePage() {
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Data Início (Op.)</label>
                             <input type="date" value={editForm.data_inicio || ''}
                               onChange={ev => setEditForm({ ...editForm, data_inicio: ev.target.value })}
-                              disabled={!canEditDataEntrega}
+                              disabled={!ePerms.canEditDatas}
                               className="w-full input-field text-xs text-gray-500" />
                           </div>
 
@@ -1501,7 +1719,7 @@ export default function ProjetoDetalhePage() {
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Quinzena</label>
                             <select value={editForm.data_final_prevista}
                               onChange={ev => setEditForm({ ...editForm, data_final_prevista: ev.target.value })}
-                              disabled={!canEditDataEntrega}
+                              disabled={!ePerms.canEditDatas}
                               className="w-full input-field text-xs">
                               <option value="">Sem prazo</option>
                               {QUINZENAS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
@@ -1512,7 +1730,7 @@ export default function ProjetoDetalhePage() {
                           <div className="flex-1 min-w-[180px]">
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Motivo do status</label>
                             <input type="text" value={editForm.motivo_status} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                              disabled={!canEditProjeto} placeholder="Opcional" className="input-field text-xs" />
+                              disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Opcional" className="input-field text-xs" />
                           </div>
                         </div>
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
@@ -1530,12 +1748,12 @@ export default function ProjetoDetalhePage() {
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
                         <textarea value={editForm.dependencias_criticas}
                           onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                          disabled={!canEditProjeto} placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
+                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
                         <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                       </div>
 
                       {/* Participantes */}
-                      {canEditProjeto && (
+                      {(ePerms.canFull || ePerms.canEditLimited) && (
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-gray-600">Participantes</span>
@@ -1642,7 +1860,7 @@ export default function ProjetoDetalhePage() {
                             </h4>
                             <button type="button" onClick={() => setHelpType('atividade')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é uma Atividade?"><HelpCircle size={14} /></button>
                           </div>
-                          {canCreateAtividade && (
+                          {ePerms.canCreateAtividades && (
                             <button onClick={() => addNewAtividade(e.id)}
                               className="text-xs bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300 px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 transition-all shadow-sm">
                               <Plus size={14} /> Adicionar
@@ -1660,6 +1878,7 @@ export default function ProjetoDetalhePage() {
                         <div className="space-y-3 mt-2">
                           {e.atividades?.map((a: any, ativIndex: number) => {
                             const isEditA = editingAtividade === a.id
+                            const aPerms = getAtividadePerms(a, ePerms)
                             return (
                               <div key={a.id} className={`rounded-xl border transition-all ${isEditA ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-100 shadow-md' : 'bg-white border-gray-200 shadow-sm hover:shadow-md'}`}>
                                 <div className="p-4">
@@ -1668,22 +1887,25 @@ export default function ProjetoDetalhePage() {
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Nome</label>
                                         <input type="text" value={editForm.nome} onChange={ev => setEditForm({ ...editForm, nome: ev.target.value })}
-                                          disabled={!canEditAtividade} className="input-field text-xs" placeholder="Nome da atividade" />
+                                          disabled={!aPerms.canFull} className="input-field text-xs" placeholder="Nome da atividade" />
                                       </div>
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Descrição</label>
                                         <input type="text" value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                                          disabled={!canEditAtividade} className="input-field text-xs" placeholder="Descreva esta atividade" />
+                                          disabled={!aPerms.canFull} className="input-field text-xs" placeholder="Descreva esta atividade" />
                                       </div>
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Responsável pela atividade</label>
                                         <UserAutocompleteSelect
                                           value={editForm.responsavel_atividade_id}
                                           onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
-                                          users={eligibleUsers}
+                                          users={(() => {
+                                            const entregaSetorIds = new Set((editForm.entrega_participantes || []).filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
+                                            return eligibleUsers.filter(u => u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                                          })()}
                                           placeholder="Selecione o responsável..."
-                                          disabled={!canEditAtividade}
-                                          onRegisterNew={() => setShowGestorModal(true)}
+                                          disabled={!(aPerms.canFull || aPerms.canEditLimited)}
+                                          onRegisterNew={() => setShowGestorModal(['gestor'])}
                                         />
                                       </div>
 
@@ -1692,7 +1914,7 @@ export default function ProjetoDetalhePage() {
                                           <div className="w-[140px]">
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
                                             <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
-                                              disabled={!canEditAtividade}
+                                              disabled={!(aPerms.canFull || aPerms.canEditLimited)}
                                               className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
                                                 editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
                                                 editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
@@ -1708,7 +1930,7 @@ export default function ProjetoDetalhePage() {
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Data prevista <span className="text-gray-400 font-normal">(prazo para conclusão)</span></label>
                                             <input type="date" value={editForm.data_prevista || ''}
                                               max={editForm.entrega_data_final || undefined}
-                                              disabled={!canEditDataAtividade}
+                                              disabled={!aPerms.canEditDatas}
                                               onChange={ev => {
                                                 const nd = ev.target.value
                                                 if (nd && editForm.entrega_data_final && nd > editForm.entrega_data_final) {
@@ -1723,7 +1945,7 @@ export default function ProjetoDetalhePage() {
                                           <div className="flex-1 min-w-[140px]">
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Motivo</label>
                                             <input type="text" value={editForm.motivo_status || ''} onChange={ev => setEditForm({ ...editForm, motivo_status: ev.target.value })}
-                                              disabled={!canEditAtividade} placeholder="Opcional" className="input-field text-xs" />
+                                              disabled={!(aPerms.canFull || aPerms.canEditLimited)} placeholder="Opcional" className="input-field text-xs" />
                                           </div>
                                         </div>
                                         <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
@@ -1738,7 +1960,7 @@ export default function ProjetoDetalhePage() {
                                         </div>
                                       </div>
                                       {/* Participantes da atividade */}
-                                      {canEditAtividade && (
+                                      {(aPerms.canFull || aPerms.canEditLimited) && (
                                       <div>
                                         <div className="flex items-center justify-between">
                                           <span className="text-[10px] font-medium text-gray-500">Participantes</span>
@@ -1776,8 +1998,8 @@ export default function ProjetoDetalhePage() {
                                           <h4 className="text-sm font-semibold text-gray-800">{a.nome}</h4>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
-                                          {(canEditAtividade || canEditDataAtividade) && <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500 transition-colors p-1"><Edit3 size={14} /></button>}
-                                          {canEditAtividade && <button onClick={() => deleteAtividade(a)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14} /></button>}
+                                          {(aPerms.canFull || aPerms.canEditLimited || aPerms.canEditDatas) && <button onClick={() => startEditAtividade(a, e)} className="text-gray-400 hover:text-orange-500 transition-colors p-1"><Edit3 size={14} /></button>}
+                                          {aPerms.canFull && <button onClick={() => deleteAtividade(a, e)} className="text-gray-400 hover:text-red-500 transition-colors p-1"><Trash2 size={14} /></button>}
                                         </div>
                                       </div>
                                       <p className="text-xs text-gray-600 mb-3 pl-7">{a.descricao}</p>
@@ -1849,9 +2071,12 @@ export default function ProjetoDetalhePage() {
                                   <UserAutocompleteSelect
                                     value={editForm.responsavel_atividade_id}
                                     onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
-                                    users={eligibleUsers}
+                                    users={(() => {
+                                      const entregaSetorIds = new Set((editForm.entrega_participantes || []).filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
+                                      return eligibleUsers.filter(u => u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                                    })()}
                                     placeholder="Selecione o responsável..."
-                                    onRegisterNew={() => setShowGestorModal(true)}
+                                    onRegisterNew={() => setShowGestorModal(['gestor'])}
                                   />
                                 </div>
                                 <div className="space-y-1.5">
@@ -1942,7 +2167,7 @@ export default function ProjetoDetalhePage() {
       </div>
 
       {/* Solicitações pendentes do gestor */}
-      {needsApproval && solicitacoes.filter(s => s.status === 'em_analise').length > 0 && (
+      {!isAdminOrMaster && isGestor && configs['proj_exigir_aprovacao_edicao'] === 'true' && solicitacoes.filter(s => s.status === 'em_analise').length > 0 && (
         <div className="mt-8">
           <h2 className="text-lg font-bold text-gray-700 mb-3">Suas solicitações pendentes</h2>
           <div className="space-y-2">
@@ -1968,7 +2193,7 @@ export default function ProjetoDetalhePage() {
       )}
 
       {/* Solicitações resolvidas (para referência) */}
-      {needsApproval && solicitacoes.filter(s => s.status !== 'em_analise').length > 0 && (
+      {!isAdminOrMaster && isGestor && configs['proj_exigir_aprovacao_edicao'] === 'true' && solicitacoes.filter(s => s.status !== 'em_analise').length > 0 && (
         <div className="mt-4">
           <h3 className="text-sm font-semibold text-gray-500 mb-2">Histórico de solicitações</h3>
           <div className="space-y-1">
@@ -1994,13 +2219,14 @@ export default function ProjetoDetalhePage() {
       )}
 
       <RegisterGestorModal
-        isOpen={showGestorModal}
+        isOpen={!!showGestorModal}
         onClose={() => setShowGestorModal(false)}
         onSuccess={(newUser) => {
           setEligibleUsers(prev => [...prev, newUser].sort((a, b) => a.nome.localeCompare(b.nome)))
           setShowGestorModal(false)
         }}
         setores={setores}
+        allowedRoles={showGestorModal || ['gestor']}
       />
     </div>
   )

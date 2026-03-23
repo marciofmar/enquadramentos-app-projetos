@@ -30,6 +30,11 @@ interface CalendarItem {
   entrega_data_final: string | null // para atividades: data limite da entrega
   atividades_datas: { nome: string; data: string }[] // para entregas: datas das atividades filhas
   responsavel_id: string | null // responsável pela entrega ou atividade
+  orgao_responsavel_setor_id: number | null // setor responsável pela entrega
+  responsavel_atividade_id: string | null // responsável pela atividade (para nível 5)
+  projeto_responsavel_id: string | null // líder do projeto
+  responsavel_entrega_id: string | null // responsável pela entrega
+  participante_user_ids: string[] // user_ids dos participantes de atividades
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -195,12 +200,12 @@ export default function CalendarioPage() {
         .order('numero'),
       supabase.from('setores').select('id, codigo, nome_completo').order('codigo'),
       supabase.from('projetos')
-        .select(`id, nome, setor_lider_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
+        .select(`id, nome, setor_lider_id, data_inicio, responsavel_id, setor_lider:setor_lider_id(codigo, nome_completo),
           projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
-          entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas, responsavel_entrega_id,
+          entregas(id, nome, data_final_prevista, status, motivo_status, criterios_aceite, dependencias_criticas, responsavel_entrega_id, orgao_responsavel_setor_id,
             entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo)),
             atividades(id, nome, data_prevista, status, motivo_status, responsavel_atividade_id,
-              atividade_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo)))
+              atividade_participantes(id, user_id, setor_id, tipo_participante, papel, setor:setor_id(codigo)))
           )`)
         .order('nome'),
       supabase.from('configuracoes').select('chave, valor'),
@@ -267,6 +272,13 @@ export default function CalendarioPage() {
               entrega_data_final: null,
               atividades_datas: ativDatas,
               responsavel_id: e.responsavel_entrega_id || null,
+              orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
+              responsavel_atividade_id: null,
+              projeto_responsavel_id: p.responsavel_id || null,
+              responsavel_entrega_id: e.responsavel_entrega_id || null,
+              participante_user_ids: (e.atividades || []).flatMap((a: any) =>
+                (a.atividade_participantes || []).filter((ap: any) => ap.user_id).map((ap: any) => ap.user_id)
+              ),
             })
           }
 
@@ -300,6 +312,11 @@ export default function CalendarioPage() {
                 entrega_data_final: e.data_final_prevista || null,
                 atividades_datas: [],
                 responsavel_id: a.responsavel_atividade_id || null,
+                orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
+                responsavel_atividade_id: a.responsavel_atividade_id || null,
+                projeto_responsavel_id: p.responsavel_id || null,
+                responsavel_entrega_id: e.responsavel_entrega_id || null,
+                participante_user_ids: (a.atividade_participantes || []).filter((ap: any) => ap.user_id).map((ap: any) => ap.user_id),
               })
             }
           })
@@ -342,7 +359,14 @@ export default function CalendarioPage() {
       if (acaoFilter && !item.acoes.some(a => a.numero === acaoFilter)) return false
       if (setorFilter && !item.setores.includes(setorFilter)) return false
       if (projetoFilter && item.projeto_id !== Number(projetoFilter)) return false
-      if (responsavelFilter && item.responsavel_id !== responsavelFilter) return false
+      if (responsavelFilter) {
+        const matchUser = item.projeto_responsavel_id === responsavelFilter
+          || item.responsavel_id === responsavelFilter
+          || item.responsavel_entrega_id === responsavelFilter
+          || item.responsavel_atividade_id === responsavelFilter
+          || item.participante_user_ids.includes(responsavelFilter)
+        if (!matchUser) return false
+      }
       return true
     })
   }, [items, oeFilter, acaoFilter, setorFilter, projetoFilter, responsavelFilter])
@@ -419,15 +443,28 @@ export default function CalendarioPage() {
   function canEditDate(item: CalendarItem): boolean {
     if (!profile) return false
     if (isAdminOrMaster) return true
-    if (profile.role !== 'gestor' || profile.setor_id !== item.setor_lider_id) return false
-    if (item.tipo === 'entrega') return configs['proj_permitir_edicao_datas'] !== 'false'
-    if (item.tipo === 'atividade') return configs['proj_permitir_edicao_datas_atividades'] !== 'false'
+    if (profile.role !== 'gestor') return false
+    const isSetorLider = profile.setor_id === item.setor_lider_id
+    const isSetorResp = profile.setor_id === item.orgao_responsavel_setor_id
+    const isRespAtividade = profile.id === item.responsavel_atividade_id
+    if (item.tipo === 'entrega') {
+      // Nível 2 (setor líder) ou Nível 4 (setor resp. entrega)
+      return (isSetorLider || isSetorResp) && configs['proj_permitir_edicao_datas'] !== 'false'
+    }
+    if (item.tipo === 'atividade') {
+      // Nível 3 (setor resp. entrega) ou Nível 5 (resp. individual da atividade)
+      return (isSetorResp || isRespAtividade) && configs['proj_permitir_edicao_datas_atividades'] !== 'false'
+    }
     return false
   }
 
   function needsApprovalForItem(item: CalendarItem): boolean {
     if (isAdminOrMaster) return false
-    return profile?.role === 'gestor' && profile.setor_id === item.setor_lider_id
+    if (profile?.role !== 'gestor') return false
+    const isSetorLider = profile.setor_id === item.setor_lider_id
+    const isSetorResp = profile.setor_id === item.orgao_responsavel_setor_id
+    const isRespAtividade = profile.id === item.responsavel_atividade_id
+    return (isSetorLider || isSetorResp || isRespAtividade)
       && configs['proj_exigir_aprovacao_edicao'] === 'true'
   }
 
@@ -445,7 +482,7 @@ export default function CalendarioPage() {
 
   // === Create activity from calendar ===
 
-  const canCreateAtividade = profile && (isAdminOrMaster || (profile.role === 'gestor' && configs['proj_permitir_edicao'] !== 'false'))
+  const canCreateAtividade = profile && (isAdminOrMaster || (profile.role === 'gestor' && configs['proj_permitir_cadastro_atividades'] !== 'false'))
 
   // Projects eligible for the current user
   const eligibleProjetos = useMemo(() => {
@@ -468,9 +505,10 @@ export default function CalendarioPage() {
     if (!createProjetoId || !profile) return []
     const proj = rawProjetos.find((p: any) => p.id === createProjetoId)
     if (!proj) return []
-    if (isAdminOrMaster || proj.setor_lider_id === profile.setor_id) return proj.entregas || []
+    if (isAdminOrMaster) return proj.entregas || []
+    // Gestor: entregas onde é setor líder ou órgão responsável
     return (proj.entregas || []).filter((e: any) =>
-      (e.entrega_participantes || []).some((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id === profile.setor_id)
+      proj.setor_lider_id === profile.setor_id || e.orgao_responsavel_setor_id === profile.setor_id
     )
   }, [rawProjetos, createProjetoId, profile, isAdminOrMaster])
 
@@ -731,28 +769,30 @@ export default function CalendarioPage() {
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field">
+          <select value={oeFilter} onChange={e => setOeFilter(e.target.value)} className="input-field" title="Filtra por objetivo estratégico vinculado">
             <option value="">Todos os objetivos</option>
             {oes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome.substring(0, 60)}</option>)}
           </select>
-          <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field">
+          <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)} className="input-field" title="Filtra pela ação estratégica vinculada">
             <option value="">Todas as ações</option>
             {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>AE {a.numero}</option>)}
           </select>
-          <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field">
+          <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)} className="input-field" title="Filtra por setor líder, setor responsável pela entrega ou participante">
             <option value="">Todos os setores</option>
             {setores.map(s => <option key={s.codigo} value={s.codigo}>{s.codigo}</option>)}
           </select>
-          <select value={projetoFilter} onChange={e => setProjetoFilter(e.target.value)} className="input-field">
+          <select value={projetoFilter} onChange={e => setProjetoFilter(e.target.value)} className="input-field" title="Filtra por projeto específico (depende dos filtros anteriores)">
             <option value="">Todos os projetos</option>
             {filteredProjetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
-          <UserAutocompleteSelect
-            value={responsavelFilter || null}
-            onChange={val => setResponsavelFilter(val || '')}
-            users={eligibleUsers}
-            placeholder="Todos os responsáveis"
-          />
+          <div title="Filtra por líder do projeto, responsável ou participante de entrega/atividade">
+            <UserAutocompleteSelect
+              value={responsavelFilter || null}
+              onChange={val => setResponsavelFilter(val || '')}
+              users={eligibleUsers}
+              placeholder="Todos os responsáveis"
+            />
+          </div>
         </div>
       </div>
 

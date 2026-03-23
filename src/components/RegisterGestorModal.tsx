@@ -8,12 +8,20 @@ interface Props {
   onClose: () => void
   onSuccess: (newUser: { id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }) => void
   setores: { id: number; codigo: string; nome_completo: string }[]
+  allowedRoles?: ('gestor' | 'usuario')[]
 }
 
-export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setores }: Props) {
+const ROLE_LABELS: Record<string, string> = {
+  gestor: 'Gestor',
+  usuario: 'Usuário',
+}
+
+export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setores, allowedRoles }: Props) {
+  const roles = allowedRoles && allowedRoles.length > 0 ? allowedRoles : ['gestor'] as ('gestor' | 'usuario')[]
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [setorId, setSetorId] = useState('')
+  const [selectedRole, setSelectedRole] = useState<string>(roles[0])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mounted, setMounted] = useState(false)
@@ -26,11 +34,16 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
       setNome('')
       setEmail('')
       setSetorId('')
+      setSelectedRole(roles[0])
       setError('')
     }
   }, [isOpen])
 
   if (!mounted || !isOpen) return null
+
+  const showRoleSelector = roles.length > 1
+  const titleLabel = showRoleSelector ? 'Cadastrar Novo Usuário' : `Cadastrar Novo ${ROLE_LABELS[roles[0]] || 'Gestor'}`
+  const buttonLabel = showRoleSelector ? `Cadastrar ${ROLE_LABELS[selectedRole] || 'Usuário'}` : `Cadastrar ${ROLE_LABELS[roles[0]] || 'Gestor'}`
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -39,7 +52,6 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
     if (!nome.trim()) { setError('Nome é obrigatório.'); return }
     if (!email.trim()) { setError('Email é obrigatório.'); return }
 
-    // Validação básica de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) { setError('Email inválido.'); return }
 
@@ -50,12 +62,12 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
       const res = await fetch('/api/admin/create-gestor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome.trim(), email: email.trim(), setor_id: parseInt(setorId) }),
+        body: JSON.stringify({ nome: nome.trim(), email: email.trim(), setor_id: parseInt(setorId), role: selectedRole }),
       })
 
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Erro ao cadastrar gestor.')
+        setError(data.error || 'Erro ao cadastrar usuário.')
         setLoading(false)
         return
       }
@@ -74,7 +86,7 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800">Cadastrar Novo Gestor</h3>
+          <h3 className="text-lg font-semibold text-gray-800">{titleLabel}</h3>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600">
             <X size={20} />
           </button>
@@ -126,8 +138,29 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
             </select>
           </div>
 
+          {showRoleSelector && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Perfil *</label>
+              <select
+                value={selectedRole}
+                onChange={e => setSelectedRole(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm"
+                disabled={loading}
+              >
+                {roles.map(r => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                {selectedRole === 'gestor'
+                  ? 'Gestor pode criar e editar projetos, entregas e atividades.'
+                  : 'Usuário tem apenas permissão de visualização no sistema.'}
+              </p>
+            </div>
+          )}
+
           <p className="text-xs text-gray-400">
-            O gestor será criado com senha temporária. No primeiro acesso, precisará definir uma nova senha.
+            O {ROLE_LABELS[selectedRole]?.toLowerCase() || 'usuário'} será criado com senha temporária. No primeiro acesso, precisará definir uma nova senha.
           </p>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -145,7 +178,7 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
               className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-60 transition-colors flex items-center gap-2"
             >
               {loading && <Loader2 size={14} className="animate-spin" />}
-              Cadastrar Gestor
+              {buttonLabel}
             </button>
           </div>
         </form>

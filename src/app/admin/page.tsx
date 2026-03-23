@@ -71,7 +71,7 @@ export default function AdminPage() {
 
       {tab === 'observacoes' && <ObservacoesAdmin />}
       {tab === 'conteudo' && <ConteudoAdmin />}
-      {tab === 'usuarios' && <UsuariosAdmin isMaster={isMaster} />}
+      {tab === 'usuarios' && <UsuariosAdmin isMaster={isMaster} adminProfile={profile} />}
       {tab === 'setores' && <SetoresAdmin />}
       {tab === 'config' && <ConfiguracoesAdmin isMaster={isMaster} />}
       {tab === 'solicitacoes' && <SolicitacoesAdmin />}
@@ -950,7 +950,7 @@ function FichaEditor({ ficha, saving, saved, onChange, onSave, onSaveMeta, onDel
 // USUÁRIOS
 // ============================================================
 
-function UsuariosAdmin({ isMaster = false }: { isMaster?: boolean }) {
+function UsuariosAdmin({ isMaster = false, adminProfile: profile }: { isMaster?: boolean; adminProfile?: Profile | null }) {
   const [users, setUsers] = useState<any[]>([])
   const [setores, setSetores] = useState<any[]>([])
   const [setoresCadastro, setSetoresCadastro] = useState<any[]>([])
@@ -976,14 +976,148 @@ function UsuariosAdmin({ isMaster = false }: { isMaster?: boolean }) {
   }, [])
 
   async function updateRole(userId: string, newRole: string) {
+    if (newRole === 'usuario' || newRole === 'solicitante') {
+      const roleLabel = newRole === 'usuario' ? 'Usuário' : 'Solicitante'
+      if (!confirm(`Alterar perfil para '${roleLabel}' remove todas as permissões de edição. Confirma?`)) return
+    }
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId)
     if (error) { alert(`Erro: ${error.message}`); return }
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u))
   }
 
   async function updateSetor(userId: string, setorId: number | null) {
-    const { error } = await supabase.from('profiles').update({ setor_id: setorId }).eq('id', userId)
+    const user = users.find(u => u.id === userId)
+    if (!user) return
+    const oldSetorId = user.setor_id
+    const newSetorId = setorId
+
+    // If setor didn't change, skip
+    if (oldSetorId === newSetorId) return
+
+    const oldSetor = setores.find((s: any) => s.id === oldSetorId)
+    const newSetor = setores.find((s: any) => s.id === newSetorId)
+    const oldSetorCodigo = oldSetor?.codigo || 'Nenhum'
+    const newSetorCodigo = newSetor?.codigo || 'Nenhum'
+
+    // Query impact before updating
+    let entregasCount = 0
+    let atividadesCount = 0
+    let projetosPerdeCount = 0
+    let projetosGanhaCount = 0
+
+    if (oldSetorId) {
+      // Entregas where user is responsavel and setor matches old setor
+      const { count: ec } = await supabase.from('entregas')
+        .select('id', { count: 'exact', head: true })
+        .eq('responsavel_entrega_id', userId)
+        .eq('orgao_responsavel_setor_id', oldSetorId)
+      entregasCount = ec || 0
+
+      // Atividades where user is responsavel and entrega's participant sectors don't include new setor
+      // We get atividades where user is responsible, then check entrega compatibility
+      const { data: atividades } = await supabase.from('atividades')
+        .select('id, entrega_id')
+        .eq('responsavel_atividade_id', userId)
+      if (atividades && atividades.length > 0 && newSetorId) {
+        const entregaIds = Array.from(new Set(atividades.map((a: any) => a.entrega_id)))
+        const { data: participantes } = await supabase.from('entrega_participantes')
+          .select('entrega_id')
+          .in('entrega_id', entregaIds)
+          .eq('setor_id', newSetorId)
+        const entregasComNovoSetor = new Set((participantes || []).map((p: any) => p.entrega_id))
+        atividadesCount = atividades.filter((a: any) => !entregasComNovoSetor.has(a.entrega_id)).length
+      } else if (atividades && !newSetorId) {
+        atividadesCount = atividades.length
+      }
+
+      // Projects where setor_lider_id = old setor (will lose access)
+      const { count: plc } = await supabase.from('projetos')
+        .select('id', { count: 'exact', head: true })
+        .eq('setor_lider_id', oldSetorId)
+      projetosPerdeCount = plc || 0
+    }
+
+    if (newSetorId) {
+      // Projects where setor_lider_id = new setor (will gain access)
+      const { count: pgc } = await supabase.from('projetos')
+        .select('id', { count: 'exact', head: true })
+        .eq('setor_lider_id', newSetorId)
+      projetosGanhaCount = pgc || 0
+    }
+
+    const hasImpact = entregasCount > 0 || atividadesCount > 0 || projetosPerdeCount > 0 || projetosGanhaCount > 0
+    const impactoMsg = hasImpact
+      ? `\n\nImpacto:\n- Perderá acesso a ${projetosPerdeCount} projetos como setor líder\n- Será removido como responsável de ${entregasCount} entregas (setor incompatível)\n- Será removido como responsável de ${atividadesCount} atividades (setor incompatível)\n- Ganhará acesso a ${projetosGanhaCount} projetos pelo novo setor\n\nOs vínculos incompatíveis serão removidos automaticamente. Confirma?`
+      : '\n\nNenhum impacto identificado em projetos ou entregas. Confirma?'
+
+    if (!confirm(`Trocar setor de ${user.nome || 'usuário'} de ${oldSetorCodigo} para ${newSetorCodigo}?${impactoMsg}`)) return
+
+    // 1. Update profile setor
+    const { error } = await supabase.from('profiles').update({ setor_id: newSetorId }).eq('id', userId)
     if (error) { alert(`Erro: ${error.message}`); return }
+
+    // 2. SET NULL entregas.responsavel_entrega_id where incompatible
+    if (oldSetorId && entregasCount > 0) {
+      await supabase.from('entregas')
+        .update({ responsavel_entrega_id: null })
+        .eq('responsavel_entrega_id', userId)
+        .eq('orgao_responsavel_setor_id', oldSetorId)
+    }
+
+    // 3. SET NULL atividades.responsavel_atividade_id where entrega sectors don't include new setor
+    if (atividadesCount > 0) {
+      const { data: atividades } = await supabase.from('atividades')
+        .select('id, entrega_id')
+        .eq('responsavel_atividade_id', userId)
+      if (atividades && atividades.length > 0) {
+        let atividadesParaRemover: string[] = []
+        if (newSetorId) {
+          const entregaIds = Array.from(new Set(atividades.map((a: any) => a.entrega_id)))
+          const { data: participantes } = await supabase.from('entrega_participantes')
+            .select('entrega_id')
+            .in('entrega_id', entregaIds)
+            .eq('setor_id', newSetorId)
+          const entregasComNovoSetor = new Set((participantes || []).map((p: any) => p.entrega_id))
+          atividadesParaRemover = atividades.filter((a: any) => !entregasComNovoSetor.has(a.entrega_id)).map((a: any) => a.id)
+        } else {
+          atividadesParaRemover = atividades.map((a: any) => a.id)
+        }
+        if (atividadesParaRemover.length > 0) {
+          await supabase.from('atividades')
+            .update({ responsavel_atividade_id: null })
+            .in('id', atividadesParaRemover)
+        }
+      }
+    }
+
+    // 4. Update atividade_participantes setor_id for active atividades
+    if (newSetorId) {
+      const { data: activeAtividades } = await supabase.from('atividades')
+        .select('id')
+        .not('status', 'in', '("resolvida","cancelada")')
+      if (activeAtividades && activeAtividades.length > 0) {
+        const activeIds = activeAtividades.map((a: any) => a.id)
+        await supabase.from('atividade_participantes')
+          .update({ setor_id: newSetorId })
+          .eq('user_id', userId)
+          .eq('tipo_participante', 'usuario')
+          .in('atividade_id', activeIds)
+      }
+    }
+
+    // 5. Audit log
+    await supabase.from('audit_log').insert({
+      usuario_id: profile?.id,
+      usuario_nome: profile?.nome,
+      tipo_acao: 'update',
+      entidade: 'profile',
+      entidade_id: userId,
+      conteudo_anterior: JSON.stringify({ setor_id: oldSetorId }),
+      conteudo_novo: JSON.stringify({ setor_id: newSetorId }),
+      descricao: `Setor alterado de ${oldSetorCodigo} para ${newSetorCodigo}`
+    })
+
+    // Refresh users list
     const { data } = await supabase.from('profiles').select('*, setores:setor_id(codigo, nome_completo)').order('nome')
     if (data) setUsers(data)
   }
@@ -1173,8 +1307,8 @@ function UsuariosAdmin({ isMaster = false }: { isMaster?: boolean }) {
                       </div>
                     )}
 
-                    {/* Excluir usuário */}
-                    {deleteConfirm === u.id ? (
+                    {/* Excluir usuário — somente admin */}
+                    {!isMaster && (deleteConfirm === u.id ? (
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-gray-500">Excluir?</span>
                         <button onClick={() => handleDeleteUser(u.id)} disabled={savingUser === u.id}
@@ -1189,7 +1323,7 @@ function UsuariosAdmin({ isMaster = false }: { isMaster?: boolean }) {
                         className="text-[10px] text-gray-400 hover:text-red-600 font-medium whitespace-nowrap flex items-center gap-1">
                         <Trash2 size={12} /> Excluir usuário
                       </button>
-                    )}
+                    ))}
                   </div>
                 </td>
               </tr>
@@ -1272,6 +1406,7 @@ function ConfiguracoesAdmin({ isMaster = false }: { isMaster?: boolean }) {
     },
     {
       grupo: 'Observações',
+      adminOnly: true,
       toggles: [
         {
           chave: 'obs_permitir_criacao',
