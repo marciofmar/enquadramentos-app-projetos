@@ -17,16 +17,19 @@ CREATE TABLE IF NOT EXISTS alertas (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_alertas_dest ON alertas (destinatario_id, lido);
+CREATE INDEX IF NOT EXISTS idx_alertas_dest ON alertas (destinatario_id, lido);
 
 ALTER TABLE alertas ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS alerta_select ON alertas;
 CREATE POLICY alerta_select ON alertas FOR SELECT TO authenticated
   USING (destinatario_id = auth.uid());
 
+DROP POLICY IF EXISTS alerta_update ON alertas;
 CREATE POLICY alerta_update ON alertas FOR UPDATE TO authenticated
   USING (destinatario_id = auth.uid());
 
+DROP POLICY IF EXISTS alerta_insert ON alertas;
 CREATE POLICY alerta_insert ON alertas FOR INSERT TO authenticated
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','master','gestor')));
 
@@ -38,6 +41,7 @@ CREATE POLICY obs_insert ON observacoes FOR INSERT TO authenticated
   ));
 
 -- 3. RLS entregas — permitir UPDATE por gestor do órgão responsável pela entrega
+DROP POLICY IF EXISTS ent_gestor_resp_update ON entregas;
 CREATE POLICY ent_gestor_resp_update ON entregas FOR UPDATE TO authenticated
   USING (EXISTS (
     SELECT 1 FROM profiles p
@@ -46,6 +50,7 @@ CREATE POLICY ent_gestor_resp_update ON entregas FOR UPDATE TO authenticated
   ));
 
 -- 4. RLS atividades — permitir CRUD por gestor do órgão responsável da entrega
+DROP POLICY IF EXISTS ativ_gestor_resp_entrega ON atividades;
 CREATE POLICY ativ_gestor_resp_entrega ON atividades FOR ALL TO authenticated
   USING (EXISTS (
     SELECT 1 FROM profiles p
@@ -55,6 +60,7 @@ CREATE POLICY ativ_gestor_resp_entrega ON atividades FOR ALL TO authenticated
   ));
 
 -- 5. RLS atividades — permitir UPDATE pelo responsável individual da atividade
+DROP POLICY IF EXISTS ativ_gestor_resp_atividade ON atividades;
 CREATE POLICY ativ_gestor_resp_atividade ON atividades FOR UPDATE TO authenticated
   USING (responsavel_atividade_id = auth.uid() AND EXISTS (
     SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'gestor'
@@ -67,6 +73,7 @@ CREATE POLICY audit_select_admin ON audit_log FOR SELECT TO authenticated
 
 -- 7. RLS audit_log — permitir insert por master e admin também (além de gestor)
 DROP POLICY IF EXISTS audit_gestor_insert ON audit_log;
+DROP POLICY IF EXISTS audit_insert_auth ON audit_log;
 CREATE POLICY audit_insert_auth ON audit_log FOR INSERT TO authenticated
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','master','gestor')));
 
