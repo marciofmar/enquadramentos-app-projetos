@@ -13,6 +13,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingSolicitantes, setPendingSolicitantes] = useState(0)
   const [urgentActivities, setUrgentActivities] = useState(0)
   const [urgentProjectIds, setUrgentProjectIds] = useState<number[]>([])
+  const [alertasCount, setAlertasCount] = useState(0)
+  const [alertasProjectIds, setAlertasProjectIds] = useState<number[]>([])
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -51,6 +53,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (urgentData && urgentData.length > 0) {
           const pIds = Array.from(new Set(urgentData.map((a: any) => a.entregas?.projeto_id).filter(Boolean))) as number[]
           setUrgentProjectIds(pIds)
+        }
+
+        // Fetch alertas não lidos (edições/exclusões em entregas/atividades)
+        const { data: alertasData, count: alertasTotal } = await supabase.from('alertas')
+          .select('id, projeto_id', { count: 'exact' })
+          .eq('destinatario_id', data.id)
+          .eq('lido', false)
+        if (alertasTotal) setAlertasCount(alertasTotal)
+        if (alertasData && alertasData.length > 0) {
+          const apIds = Array.from(new Set(alertasData.map((a: any) => a.projeto_id).filter(Boolean))) as number[]
+          setAlertasProjectIds(apIds)
         }
 
         // Guarda: se solicitante, redirecionar para /pendente
@@ -217,6 +230,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span className="font-medium text-center">
             Atenção! Você é responsável por {urgentActivities} atividade{urgentActivities > 1 ? 's' : ''} com prazo para os próximos 7 dias.
           </span>
+        </div>
+      )}
+
+      {alertasCount > 0 && (
+        <div className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner z-40 relative">
+          <AlertCircle size={18} className="shrink-0" />
+          <span
+            onClick={() => router.push(`/dashboard/projetos?alerta_impacto=${alertasProjectIds.join(',')}`)}
+            className="font-medium text-center cursor-pointer hover:underline"
+          >
+            {alertasCount} alteração(ões) em entregas/atividades sob sua responsabilidade. Ver detalhes
+          </span>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation()
+              await supabase.from('alertas').update({ lido: true }).eq('destinatario_id', profile!.id).eq('lido', false)
+              setAlertasCount(0)
+              setAlertasProjectIds([])
+            }}
+            className="ml-2 text-white/80 hover:text-white font-bold text-lg leading-none"
+            title="Marcar todos como lidos"
+          >
+            ✕
+          </button>
         </div>
       )}
 

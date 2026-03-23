@@ -98,10 +98,7 @@ export default function PainelGanttPage() {
       const p = profileRes.data as any
       if (p) {
         setProfile(p)
-        if (p.setores?.codigo) {
-          setSetorFilter(p.setores.codigo)
-          setSetorFilterId(p.setor_id)
-        }
+        // Visualização sem limitação de filtro — todos começam sem filtro
       }
       if (setoresRes.data) setSetores(setoresRes.data)
       // Load eligible users for filter
@@ -161,8 +158,10 @@ export default function PainelGanttPage() {
     return false
   }, [])
 
-  const isEntregaDoUser = useCallback((entrega: any, userId: string | null) => {
+  const isEntregaDoUser = useCallback((entrega: any, userId: string | null, projeto?: any) => {
     if (!userId) return false
+    // Check project leader
+    if (projeto && projeto.responsavel_id === userId) return true
     if (entrega.responsavel_entrega_id === userId) return true
     return (entrega.atividades || []).some((a: any) => {
       if (a.responsavel_atividade_id === userId) return true
@@ -263,7 +262,7 @@ export default function PainelGanttPage() {
             endDate: eEnd,
             status: e.status,
             isSetorDireto: isSetor,
-            isUserDireto: isEntregaDoUser(e, userFilter),
+            isUserDireto: isEntregaDoUser(e, userFilter, p),
             atividades
           })
         })
@@ -384,6 +383,7 @@ export default function PainelGanttPage() {
             value={setorFilter}
             onChange={e => setSetorFilter(e.target.value)}
             className="input-field w-auto min-w-[220px]"
+            title="Exibe projetos por setor líder, setor responsável pela entrega ou setores participantes"
           >
             <option value="" disabled>Selecione um setor</option>
             {setores.map(s => (
@@ -396,13 +396,14 @@ export default function PainelGanttPage() {
             value={soComEntregas ? 'com_entregas' : 'todos'}
             onChange={e => setSoComEntregas(e.target.value === 'com_entregas')}
             className="input-field w-auto min-w-[200px]"
+            title="Filtra entre todos os projetos ou apenas os que possuem entregas cadastradas"
           >
             <option value="todos">Todos os projetos</option>
             <option value="com_entregas">Somente com entregas</option>
           </select>
           <span className="border-l border-gray-200 pl-3 ml-1" />
           <label className="text-sm font-medium text-gray-600">Resp./Part.:</label>
-          <div className="w-[220px]">
+          <div className="w-[220px]" title="Filtra por líder do projeto, responsável ou participante de entrega/atividade">
             <UserAutocompleteSelect
               value={userFilter}
               onChange={val => setUserFilter(val)}

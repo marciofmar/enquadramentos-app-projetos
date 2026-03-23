@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await serverSupabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const { nome, email, setor_id } = await request.json()
+    const { nome, email, setor_id, role } = await request.json()
 
     // Validações
     if (!nome || !nome.trim()) {
@@ -26,11 +26,15 @@ export async function POST(request: NextRequest) {
 
     // Criar usuário via função SECURITY DEFINER (contorna bug HS256 do GoTrue)
     // A função já verifica que o caller é gestor, master ou admin via auth.uid()
+    // role: 'gestor' (default) ou 'usuario'
+    const userRole = role === 'usuario' ? 'usuario' : 'gestor'
+
     const { data: newUserId, error: createError } = await serverSupabase.rpc('admin_create_user', {
       p_email: email.trim().toLowerCase(),
       p_password: tempPassword,
       p_nome: nome.trim(),
       p_setor_id: parseInt(setor_id),
+      p_role: userRole,
     })
     if (createError) {
       return NextResponse.json({ error: createError.message }, { status: 500 })

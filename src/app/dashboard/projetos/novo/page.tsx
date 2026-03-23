@@ -67,7 +67,7 @@ export default function NovoProjetoPage() {
   const [entregas, setEntregas] = useState<Entrega[]>([])
   const [configs, setConfigs] = useState<Record<string, string>>({})
   const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
-  const [showGestorModal, setShowGestorModal] = useState(false)
+  const [showGestorModal, setShowGestorModal] = useState<false | ('gestor' | 'usuario')[]>(false)
   const [dataInicio, setDataInicio] = useState('')
 
   const router = useRouter()
@@ -379,6 +379,12 @@ export default function NovoProjetoPage() {
                 papel: p.papel.trim()
               })))
           }
+
+          await supabase.from('audit_log').insert({
+            usuario_id: profile!.id, usuario_nome: profile!.nome,
+            tipo_acao: 'create', entidade: 'atividade', entidade_id: ativ.id,
+            conteudo_novo: { nome: a.nome.trim(), entrega_id: ent.id, projeto_id: proj.id }
+          })
         }
       }
 
@@ -452,6 +458,8 @@ export default function NovoProjetoPage() {
             }}
             users={p.user_id && selectedUser ? [selectedUser, ...filteredUsers] : filteredUsers}
             placeholder="Selecione o participante..."
+            onRegisterNew={() => setShowGestorModal(['gestor', 'usuario'])}
+            registerNewLabel="Cadastrar novo usuário"
           />
         </div>
         {selectedUser?.setor_codigo && (
@@ -517,7 +525,7 @@ export default function NovoProjetoPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <ProjectGuidelineModal isOpen={modalOpen} onClose={() => setModalOpen(false)} showCheckbox={modalShowCheckbox} />
-      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} />
+      <HelpTooltipModal type={helpType} onClose={() => setHelpType(null)} userRole={profile?.role} />
       <button onClick={() => router.push('/dashboard/projetos')}
         className="flex items-center gap-2 text-sm text-sedec-500 hover:text-sedec-700 mb-4">
         <ArrowLeft size={16} /> Voltar aos projetos
@@ -527,6 +535,9 @@ export default function NovoProjetoPage() {
         <h1 className="text-2xl font-bold text-gray-800">Novo Projeto</h1>
         <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
           <HelpCircle size={20} />
+        </button>
+        <button onClick={() => setHelpType('permissoes')} className="text-gray-400 hover:text-sedec-500 ml-2 transition-colors" title="Regras de permissão">
+          <HelpCircle size={16} />
         </button>
       </div>
 
@@ -570,7 +581,7 @@ export default function NovoProjetoPage() {
                   users={eligibleUsers}
                   placeholder="Selecione o líder do projeto..."
                   required
-                  onRegisterNew={() => setShowGestorModal(true)}
+                  onRegisterNew={() => setShowGestorModal(['gestor'])}
                 />
               </div>
             </div>
@@ -732,7 +743,15 @@ export default function NovoProjetoPage() {
                       <label className="text-xs font-medium text-gray-500">Órgão responsável</label>
                       <select
                         value={e.orgao_responsavel_setor_id || ''}
-                        onChange={ev => updateEntrega(eIdx, 'orgao_responsavel_setor_id', ev.target.value ? parseInt(ev.target.value) : null)}
+                        onChange={ev => {
+                          const newSetorId = ev.target.value ? parseInt(ev.target.value) : null
+                          const currentResp = e.responsavel_entrega_id
+                          const respUser = currentResp ? eligibleUsers.find(u => u.id === currentResp) : null
+                          const shouldClear = currentResp && newSetorId && respUser && respUser.setor_id !== newSetorId
+                          const updated = [...entregas]
+                          updated[eIdx] = { ...updated[eIdx], orgao_responsavel_setor_id: newSetorId, ...(shouldClear ? { responsavel_entrega_id: null } : {}) }
+                          setEntregas(updated)
+                        }}
                         className="input-field text-xs">
                         <option value="">Selecione...</option>
                         {e.participantes
@@ -755,10 +774,10 @@ export default function NovoProjetoPage() {
                           updated[eIdx].responsavel_entrega_id = val
                           setEntregas(updated)
                         }}
-                        users={eligibleUsers}
+                        users={eligibleUsers.filter(u => u.id === e.responsavel_entrega_id || (!e.orgao_responsavel_setor_id || u.setor_id === e.orgao_responsavel_setor_id))}
                         placeholder="Selecione o responsável..."
                         required
-                        onRegisterNew={() => setShowGestorModal(true)}
+                        onRegisterNew={() => setShowGestorModal(['gestor'])}
                       />
                     </div>
                   </div>
@@ -857,10 +876,13 @@ export default function NovoProjetoPage() {
                                 updated[eIdx].atividades[aIdx].responsavel_atividade_id = val
                                 setEntregas(updated)
                               }}
-                              users={eligibleUsers}
+                              users={(() => {
+                                const entregaSetorIds = new Set(e.participantes.filter(p => p.tipo_participante === 'setor' && p.setor_id).map(p => p.setor_id))
+                                return eligibleUsers.filter(u => u.id === a.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                              })()}
                               placeholder="Selecione o responsável..."
                               required
-                              onRegisterNew={() => setShowGestorModal(true)}
+                              onRegisterNew={() => setShowGestorModal(['gestor'])}
                             />
                           </div>
 
@@ -961,13 +983,14 @@ export default function NovoProjetoPage() {
       </div>
 
       <RegisterGestorModal
-        isOpen={showGestorModal}
+        isOpen={!!showGestorModal}
         onClose={() => setShowGestorModal(false)}
         onSuccess={(newUser) => {
           setEligibleUsers(prev => [...prev, newUser].sort((a, b) => a.nome.localeCompare(b.nome)))
           setShowGestorModal(false)
         }}
         setores={setores}
+        allowedRoles={showGestorModal || ['gestor']}
       />
     </div>
   )

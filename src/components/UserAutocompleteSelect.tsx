@@ -20,6 +20,7 @@ interface Props {
   disabled?: boolean
   className?: string
   onRegisterNew?: () => void
+  registerNewLabel?: string
 }
 
 export default function UserAutocompleteSelect({
@@ -31,6 +32,7 @@ export default function UserAutocompleteSelect({
   disabled = false,
   className = '',
   onRegisterNew,
+  registerNewLabel = 'Cadastrar novo gestor',
 }: Props) {
   const [search, setSearch] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -209,7 +211,7 @@ export default function UserAutocompleteSelect({
           type="button"
           onClick={onRegisterNew}
           className="flex items-center justify-center w-9 h-9 mt-0 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-orange-400 hover:text-orange-500 hover:bg-orange-50 transition-colors flex-shrink-0"
-          title="Cadastrar novo gestor"
+          title={registerNewLabel}
         >
           <UserPlus size={16} />
         </button>
