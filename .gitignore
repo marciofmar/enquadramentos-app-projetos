@@ -7,3 +7,6 @@ dados_remotos.sql
 supabase/.temp
 *.zip
 .claude/
+imagem_de_teste.sql
+dump_public.sql
+dump_auth.sql

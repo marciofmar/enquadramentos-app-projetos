@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users, HelpCircle, Info } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users, HelpCircle, Info, Pause } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import HelpTooltipModal, { type HelpType } from '@/components/HelpTooltipModal'
@@ -23,7 +23,8 @@ interface ProjetoCard {
   atividades_atrasadas: { nome: string; data: string }[]
   pontualidade: 'em_dia' | 'proximo' | 'atrasado'
   tem_atividades_atrasadas: boolean
-  status_projeto: 'em_andamento' | 'concluido' | 'cancelado'
+  status: string
+  status_projeto: 'em_andamento' | 'concluido' | 'cancelado' | 'hibernando'
   solicitacoes_pendentes: number
   responsavel_id: string | null
   responsaveis_entrega: string[]
@@ -43,6 +44,7 @@ const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   atrasado: { label: 'Atrasado', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-300', icon: AlertTriangle },
   concluido: { label: 'Concluído', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-300', icon: CheckCircle2 },
   cancelado: { label: 'Cancelado', color: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-300', icon: XCircle },
+  hibernando: { label: 'Hibernando', color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-300', icon: Pause },
 }
 
 export default function ProjetosPage() {
@@ -69,7 +71,7 @@ export default function ProjetosPage() {
   const [setorFilter, setSetorFilter] = useState('')
   const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
   const [responsavelFilter, setResponsavelFilter] = useState('')
-  const [showIncompleteOnly, setShowIncompleteOnly] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<'ativos' | 'concluidos' | 'hibernando'>('ativos')
   const [helpType, setHelpType] = useState<HelpType>(null)
 
   // Reference data
@@ -131,7 +133,7 @@ export default function ProjetosPage() {
 
     // Projects with all related data
     const { data: projData } = await supabase.from('projetos')
-      .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id,
+      .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id, status,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
         entregas(id, nome, data_final_prevista, status, responsavel_entrega_id, orgao_responsavel_setor_id,
@@ -280,8 +282,10 @@ export default function ProjetosPage() {
           if (e.data_final_prevista && (!minEntregaFim || e.data_final_prevista < minEntregaFim)) minEntregaFim = e.data_final_prevista
         }
 
-        let status_projeto: 'em_andamento' | 'concluido' | 'cancelado' = 'em_andamento'
-        if (entregas.length > 0) {
+        let status_projeto: 'em_andamento' | 'concluido' | 'cancelado' | 'hibernando' = 'em_andamento'
+        if (p.status === 'hibernando') {
+          status_projeto = 'hibernando'
+        } else if (entregas.length > 0) {
           if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'cancelado'
           else if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) status_projeto = 'concluido'
         }
@@ -305,6 +309,7 @@ export default function ProjetosPage() {
           atividades_atrasadas: ativAtrasadas,
           pontualidade,
           tem_atividades_atrasadas: ativAtrasadas.length > 0,
+          status: p.status || 'ativo',
           status_projeto,
           solicitacoes_pendentes: solsPorProjeto[p.id] || 0,
           responsavel_id: p.responsavel_id || null,
@@ -369,12 +374,19 @@ export default function ProjetosPage() {
         const isPartAtividade = p.participantes_atividade.includes(responsavelFilter)
         if (!isLider && !isRespEntrega && !isRespAtividade && !isPartAtividade) return false
       }
-      if (showIncompleteOnly) {
-        if (p.status_projeto !== 'em_andamento') return false
+      if (statusFilter === 'ativos') {
+        if (p.status === 'hibernando') return false
+        const entregas = p.status_projeto
+        if (entregas === 'concluido' || entregas === 'cancelado') return false
+      } else if (statusFilter === 'concluidos') {
+        if (p.status === 'hibernando') return false
+        if (p.status_projeto !== 'concluido' && p.status_projeto !== 'cancelado') return false
+      } else if (statusFilter === 'hibernando') {
+        if (p.status !== 'hibernando') return false
       }
       return true
     })
-  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter, showIncompleteOnly])
+  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter, statusFilter])
 
   const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
   const [viewMode, setViewMode] = useState<'normal' | 'compact'>('compact')
@@ -384,6 +396,7 @@ export default function ProjetosPage() {
     em_andamento: { label: 'Em andamento', icon: Clock, color: 'text-blue-600' },
     concluido: { label: 'Concluídos', icon: CheckCircle2, color: 'text-emerald-600' },
     cancelado: { label: 'Cancelados', icon: XCircle, color: 'text-gray-500' },
+    hibernando: { label: 'Hibernando', icon: Pause, color: 'text-indigo-600' },
   }
 
   const grouped = useMemo(() => {
@@ -509,15 +522,19 @@ export default function ProjetosPage() {
               Compacto
             </button>
           </div>
-          {/* Foco em andamento */}
+          {/* Filtro por status */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-            <button onClick={() => setShowIncompleteOnly(true)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${showIncompleteOnly ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              Em andamento
+            <button onClick={() => setStatusFilter('ativos')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${statusFilter === 'ativos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Ativos
             </button>
-            <button onClick={() => setShowIncompleteOnly(false)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${!showIncompleteOnly ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              Todos
+            <button onClick={() => setStatusFilter('concluidos')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${statusFilter === 'concluidos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Concluídos
+            </button>
+            <button onClick={() => setStatusFilter('hibernando')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${statusFilter === 'hibernando' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              <Pause size={12} /> Hibernando
             </button>
           </div>
         </div>

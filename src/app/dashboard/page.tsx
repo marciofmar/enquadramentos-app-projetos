@@ -73,6 +73,7 @@ export default function DashboardPage() {
           eixo_prioritario:eixo_prioritario_id(codigo, nome),
           objetivo_estrategico:objetivo_estrategico_id(codigo, nome),
           estrategia:estrategia_id(codigo, nome)`)
+        .eq('visivel_enquadramento', true)
 
       if (acoesData) {
         const sorted = acoesData

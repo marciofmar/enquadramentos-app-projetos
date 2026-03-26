@@ -6,7 +6,7 @@ import { X, Loader2 } from 'lucide-react'
 interface Props {
   isOpen: boolean
   onClose: () => void
-  onSuccess: (newUser: { id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }) => void
+  onSuccess: (newUser: { id: string; nome: string; email: string; role: string; setor_id: number | null; setor_codigo: string | null }) => void
   setores: { id: number; codigo: string; nome_completo: string }[]
   allowedRoles?: ('gestor' | 'usuario')[]
 }
@@ -73,7 +73,7 @@ export default function RegisterGestorModal({ isOpen, onClose, onSuccess, setore
       }
 
       const selectedSetor = setores.find(s => s.id === parseInt(setorId))
-      onSuccess({ ...data.user, setor_id: parseInt(setorId), setor_codigo: selectedSetor?.codigo || null })
+      onSuccess({ ...data.user, role: selectedRole, setor_id: parseInt(setorId), setor_codigo: selectedSetor?.codigo || null })
       onClose()
     } catch {
       setError('Erro de conexão.')
