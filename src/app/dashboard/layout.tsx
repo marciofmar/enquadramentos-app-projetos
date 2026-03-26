@@ -17,6 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [alertas, setAlertas] = useState<any[]>([])
   const [alertasExpanded, setAlertasExpanded] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
+  const [manualTooltip, setManualTooltip] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -116,6 +117,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [profile, pathname])
 
+  // Mostrar tooltip do manual apenas na primeira visita
+  useEffect(() => {
+    if (!profile) return
+    const key = `manual_tooltip_dismissed_${profile.id}`
+    if (!localStorage.getItem(key)) {
+      const t = setTimeout(() => setManualTooltip(true), 800)
+      return () => clearTimeout(t)
+    }
+  }, [profile])
+
+  function dismissManualTooltip() {
+    if (!profile) return
+    localStorage.setItem(`manual_tooltip_dismissed_${profile.id}`, '1')
+    setManualTooltip(false)
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -205,9 +222,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="text-xs bg-orange-600 px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
               </button>
 
-              <button onClick={() => setManualOpen(true)} className="text-gray-400 hover:text-sedec-400 transition-colors" title="Manual de Utilização">
-                <BookOpen size={18} />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => { dismissManualTooltip(); setManualOpen(true) }}
+                  className="text-gray-400 hover:text-sedec-400 transition-colors"
+                  title="Manual de Utilização"
+                >
+                  <BookOpen size={18} />
+                </button>
+
+                {manualTooltip && (
+                  <div className="absolute right-0 top-8 z-[200] w-56 animate-in fade-in slide-in-from-top-1 duration-200">
+                    {/* Seta */}
+                    <div className="absolute -top-1.5 right-2 w-3 h-3 bg-sedec-600 rotate-45 rounded-sm" />
+                    <div className="bg-sedec-600 text-white text-xs rounded-xl shadow-xl px-4 py-3 leading-relaxed">
+                      <p className="font-semibold mb-1">📖 Manual disponível</p>
+                      <p className="text-sedec-100">Consulte as instruções de uso do sistema aqui sempre que precisar.</p>
+                      <button
+                        onClick={e => { e.stopPropagation(); dismissManualTooltip() }}
+                        className="mt-2 text-sedec-200 hover:text-white underline underline-offset-2 text-[11px]"
+                      >
+                        Entendi, não mostrar novamente
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <button onClick={handleLogout} className="text-gray-400 hover:text-white transition-colors" title="Sair">
                 <LogOut size={18} />
