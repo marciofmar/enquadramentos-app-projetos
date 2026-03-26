@@ -27,6 +27,32 @@ export async function POST(request: NextRequest) {
     })
     if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 })
 
+    // Garantir que o profile foi criado pelo trigger
+    const { data: existingProfile } = await adminClient
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single()
+
+    if (!existingProfile) {
+      // Trigger falhou — criar profile manualmente
+      console.warn(`[auto-confirm] Profile não encontrado para userId=${userId}. Criando manualmente...`)
+      const { data: { user: authUser }, error: userErr } = await adminClient.auth.admin.getUserById(userId)
+      if (userErr) console.error(`[auto-confirm] Erro ao buscar auth user: ${userErr.message}`)
+      if (authUser) {
+        const { error: insertErr } = await adminClient.from('profiles').insert({
+          id: userId,
+          email: authUser.email,
+          nome: authUser.user_metadata?.nome || authUser.email,
+          setor_id: authUser.user_metadata?.setor_id ? parseInt(authUser.user_metadata.setor_id) : null,
+          perfil_solicitado: authUser.user_metadata?.perfil_solicitado || null,
+          role: 'solicitante'
+        })
+        if (insertErr) console.error(`[auto-confirm] Erro ao criar profile: ${insertErr.message}`)
+        else console.log(`[auto-confirm] Profile criado com sucesso para ${authUser.email}`)
+      }
+    }
+
     return NextResponse.json({ success: true, confirmed: true })
   } catch {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })

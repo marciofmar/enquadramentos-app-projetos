@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle } from 'lucide-react'
@@ -56,8 +56,9 @@ export default function NovoProjetoPage() {
   const [problemaResolve, setProblemaResolve] = useState('')
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavelId, setResponsavelId] = useState<string | null>(null)
-  const [indicadorSucesso, setIndicadorSucesso] = useState('')
+  const [indicadores, setIndicadores] = useState<{nome:string,formula:string,fonte_dados:string,periodicidade:string,unidade_medida:string,responsavel:string,meta:string}[]>([])
   const [dependenciasProjetos, setDependenciasProjetos] = useState('')
+  const savingRef = useRef(false)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -66,7 +67,7 @@ export default function NovoProjetoPage() {
   const [acoesSelecionadas, setAcoesSelecionadas] = useState<number[]>([])
   const [entregas, setEntregas] = useState<Entrega[]>([])
   const [configs, setConfigs] = useState<Record<string, string>>({})
-  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; role: string; setor_id: number | null; setor_codigo: string | null }[]>([])
   const [showGestorModal, setShowGestorModal] = useState<false | ('gestor' | 'usuario')[]>(false)
   const [dataInicio, setDataInicio] = useState('')
 
@@ -100,12 +101,12 @@ export default function NovoProjetoPage() {
       if (s) setSetores(s)
 
       const { data: usersData } = await supabase.from('profiles')
-        .select('id, nome, email, setor_id, setores:setor_id(codigo)')
-        .not('role', 'eq', 'solicitante')
+        .select('id, nome, email, role, setor_id, setores:setor_id(codigo)')
+        .in('role', ['gestor', 'master', 'usuario'])
         .eq('ativo', true)
         .order('nome')
       if (usersData) setEligibleUsers(usersData.map((u: any) => ({
-        id: u.id, nome: u.nome, email: u.email,
+        id: u.id, nome: u.nome, email: u.email, role: u.role,
         setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
       })))
 
@@ -131,9 +132,13 @@ export default function NovoProjetoPage() {
   }, [])
 
   const TIPOS_ACAO = [
-    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 
+    'Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação',
     'Gestão/Governança', 'Inovação', 'Integração'
   ]
+
+  const isAdminOrMaster = profile?.role === 'admin' || profile?.role === 'master'
+  const setoresDisponiveis = isAdminOrMaster ? setores : setores.filter(s => s.id === profile?.setor_id)
+  const usuariosDisponiveis = isAdminOrMaster ? eligibleUsers : eligibleUsers.filter(u => u.setor_id === profile?.setor_id)
 
   function toggleTipoAcao(tipo: string) {
     setTipoAcao(prev => prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo])
@@ -224,35 +229,38 @@ export default function NovoProjetoPage() {
   }
 
   async function handleSave() {
+    if (savingRef.current) return
+    savingRef.current = true
+
     if (!nome.trim() || !descricao.trim() || !problemaResolve.trim() || !setorLiderId || acoesSelecionadas.length === 0) {
       alert('Preencha todos os campos obrigatórios e selecione ao menos uma ação estratégica.')
-      return
+      savingRef.current = false; return
     }
     for (const e of entregas) {
       if (!e.nome.trim() || !e.descricao.trim() || !e.criterios_aceite.trim()) {
         alert('Preencha nome, descrição e critérios de aceite de todas as entregas.')
-        return
+        savingRef.current = false; return
       }
       const validParticipantes = e.participantes.filter(p => p.papel.trim())
       if (validParticipantes.length === 0) {
         alert(`A entrega "${e.nome}" precisa de ao menos um participante com papel definido.`)
-        return
+        savingRef.current = false; return
       }
       // Check duplicate setores in entrega
       const keys = validParticipantes.map(p => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
       if (new Set(keys).size !== keys.length) {
         alert(`A entrega "${e.nome}" tem setores/participantes duplicados. Use o campo "papel" para múltiplos papéis do mesmo setor.`)
-        return
+        savingRef.current = false; return
       }
       for (const a of e.atividades) {
         if (!a.nome.trim() || !a.descricao.trim()) {
           alert('Preencha nome e descrição de todas as atividades.')
-          return
+          savingRef.current = false; return
         }
         // Check atividade date <= entrega quinzena
         if (a.data_prevista && e.quinzena && a.data_prevista > e.quinzena) {
           alert(`A atividade "${a.nome}" tem data posterior à quinzena da entrega "${e.nome}".`)
-          return
+          savingRef.current = false; return
         }
         // Check atividade participantes: setor do usuário deve estar nos participantes da entrega
         const entregaSetorIds = new Set(validParticipantes.filter(p => p.tipo_participante === 'setor' && p.setor_id).map(p => p.setor_id))
@@ -262,7 +270,7 @@ export default function NovoProjetoPage() {
             const u = eligibleUsers.find(u => u.id === ap.user_id)
             if (u?.setor_id && !entregaSetorIds.has(u.setor_id)) {
               alert(`A atividade "${a.nome}" inclui o participante "${u.nome}" cujo setor não está na entrega "${e.nome}".`)
-              return
+              savingRef.current = false; return
             }
           }
         }
@@ -270,24 +278,35 @@ export default function NovoProjetoPage() {
         const aKeys = ativValidP.map(p => p.tipo_participante === 'usuario' ? `u_${p.user_id}` : p.tipo_participante)
         if (new Set(aKeys).size !== aKeys.length) {
           alert(`A atividade "${a.nome}" tem participantes duplicados.`)
-          return
+          savingRef.current = false; return
         }
       }
     }
 
     if (!responsavelId) {
       alert('Selecione o líder do projeto.')
-      return
+      savingRef.current = false; return
     }
     for (const e of entregas) {
+      if (e.responsavel_entrega_id && !e.orgao_responsavel_setor_id) {
+        alert(`A entrega "${e.nome}" tem responsável mas sem órgão responsável definido. Selecione o órgão responsável.`)
+        savingRef.current = false; return
+      }
       if (!e.responsavel_entrega_id) {
         alert(`Selecione o responsável pela entrega "${e.nome}".`)
-        return
+        savingRef.current = false; return
+      }
+      if (e.responsavel_entrega_id && e.orgao_responsavel_setor_id) {
+        const respUser = eligibleUsers.find(u => u.id === e.responsavel_entrega_id)
+        if (respUser && respUser.setor_id !== e.orgao_responsavel_setor_id) {
+          alert(`O responsável pela entrega "${e.nome}" não pertence ao órgão responsável selecionado.`)
+          savingRef.current = false; return
+        }
       }
       for (const a of e.atividades) {
         if (!a.responsavel_atividade_id) {
           alert(`Selecione o responsável pela atividade "${a.nome}".`)
-          return
+          savingRef.current = false; return
         }
       }
     }
@@ -295,13 +314,37 @@ export default function NovoProjetoPage() {
       for (const e of entregas) {
         if (e.quinzena && e.quinzena < dataInicio) {
           alert(`A entrega "${e.nome}" tem prazo anterior à data de início do projeto.`)
-          return
+          savingRef.current = false; return
         }
         for (const a of e.atividades) {
           if (a.data_prevista && a.data_prevista < dataInicio) {
             alert(`A atividade "${a.nome}" tem data anterior à data de início do projeto.`)
-            return
+            savingRef.current = false; return
           }
+        }
+      }
+    }
+
+    // Validate indicador nome required
+    const indicadoresComDados = indicadores.filter(i => i.nome || i.formula || i.fonte_dados || i.periodicidade || i.unidade_medida || i.responsavel || i.meta)
+    if (indicadoresComDados.some(i => !i.nome?.trim())) {
+      alert('Preencha o campo "Nome" de todos os indicadores.')
+      savingRef.current = false; return
+    }
+
+    // Validate gestor setor restrictions
+    if (!isAdminOrMaster) {
+      for (const e of entregas) {
+        const validP = e.participantes.filter(p => p.papel.trim())
+        for (const p of validP) {
+          if (p.tipo_participante === 'setor' && p.setor_id !== profile?.setor_id) {
+            alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+            savingRef.current = false; return
+          }
+        }
+        if (e.orgao_responsavel_setor_id && e.orgao_responsavel_setor_id !== profile?.setor_id) {
+          alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+          savingRef.current = false; return
         }
       }
     }
@@ -312,7 +355,6 @@ export default function NovoProjetoPage() {
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
         responsavel_id: responsavelId,
         data_inicio: dataInicio || null,
-        indicador_sucesso: indicadorSucesso.trim() || null,
         dependencias_projetos: dependenciasProjetos.trim() || null,
         tipo_acao: tipoAcao.length > 0 ? tipoAcao : null,
         setor_lider_id: setorLiderId, criado_por: profile!.id
@@ -322,11 +364,19 @@ export default function NovoProjetoPage() {
       await supabase.from('projeto_acoes').insert(
         acoesSelecionadas.map(aid => ({ projeto_id: proj.id, acao_estrategica_id: aid })))
 
+      // Insert indicadores
+      if (indicadoresComDados.length > 0) {
+        await supabase.from('indicadores').insert(indicadoresComDados.map(i => ({ projeto_id: proj.id, ...i })))
+      }
+
       await supabase.from('audit_log').insert({
         usuario_id: profile!.id, usuario_nome: profile!.nome,
         tipo_acao: 'create', entidade: 'projeto', entidade_id: proj.id,
         conteudo_novo: { nome: nome.trim(), descricao: descricao.trim(), setor_lider_id: setorLiderId }
       })
+
+      // Collect all alerts to batch insert
+      const alertas: any[] = []
 
       for (const e of entregas) {
         const { data: ent, error: entErr } = await supabase.from('entregas').insert({
@@ -342,6 +392,10 @@ export default function NovoProjetoPage() {
         if (entErr) throw entErr
 
         const validP = e.participantes.filter(p => p.papel.trim())
+        // Auto-incluir órgão responsável como participante se não estiver na lista
+        if (e.orgao_responsavel_setor_id && !validP.some(p => p.tipo_participante === 'setor' && p.setor_id === e.orgao_responsavel_setor_id)) {
+          validP.push({ setor_id: e.orgao_responsavel_setor_id, tipo_participante: 'setor', papel: 'Órgão responsável' })
+        }
         if (validP.length > 0) {
           await supabase.from('entrega_participantes').insert(
             validP.map(p => ({
@@ -385,14 +439,72 @@ export default function NovoProjetoPage() {
             tipo_acao: 'create', entidade: 'atividade', entidade_id: ativ.id,
             conteudo_novo: { nome: a.nome.trim(), entrega_id: ent.id, projeto_id: proj.id }
           })
+
+          // Collect alerts for atividade responsavel
+          if (a.responsavel_atividade_id && a.responsavel_atividade_id !== profile!.id) {
+            alertas.push({
+              destinatario_id: a.responsavel_atividade_id,
+              tipo: 'nomeacao_responsavel_atividade',
+              entidade: 'atividade', entidade_id: ativ.id, entidade_nome: a.nome.trim(),
+              projeto_id: proj.id, projeto_nome: proj.nome,
+              autor_id: profile!.id, autor_nome: profile!.nome,
+              descricao: `Nomeação como responsável pela atividade ${a.nome.trim()}`
+            })
+          }
+
+          // Collect alerts for atividade participants
+          const validAtivParticipantes = a.participantes.filter(p => p.papel.trim())
+          for (const ap of validAtivParticipantes) {
+            if (ap.tipo_participante === 'usuario' && ap.user_id && ap.user_id !== profile!.id) {
+              alertas.push({
+                destinatario_id: ap.user_id,
+                tipo: 'nomeacao_participante',
+                entidade: 'atividade', entidade_id: ativ.id, entidade_nome: a.nome.trim(),
+                projeto_id: proj.id, projeto_nome: proj.nome,
+                autor_id: profile!.id, autor_nome: profile!.nome,
+                descricao: `Inserção como participante da atividade ${a.nome.trim()}`
+              })
+            }
+          }
         }
+
+        // Collect alert for entrega responsavel
+        if (e.responsavel_entrega_id && e.responsavel_entrega_id !== profile!.id) {
+          alertas.push({
+            destinatario_id: e.responsavel_entrega_id,
+            tipo: 'nomeacao_responsavel_entrega',
+            entidade: 'entrega', entidade_id: ent.id, entidade_nome: e.nome.trim(),
+            projeto_id: proj.id, projeto_nome: proj.nome,
+            autor_id: profile!.id, autor_nome: profile!.nome,
+            descricao: `Nomeação como responsável da entrega ${e.nome.trim()}`
+          })
+        }
+      }
+
+      // Alert for project leader
+      if (responsavelId && responsavelId !== profile!.id) {
+        alertas.push({
+          destinatario_id: responsavelId,
+          tipo: 'nomeacao_lider',
+          entidade: 'projeto', entidade_id: proj.id, entidade_nome: proj.nome,
+          projeto_id: proj.id, projeto_nome: proj.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: `Nomeação como líder do projeto ${proj.nome}`
+        })
+      }
+
+      // Batch insert all alerts
+      if (alertas.length > 0) {
+        await supabase.from('alertas').insert(alertas)
       }
 
       router.push(`/dashboard/projetos/${proj.id}`)
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`)
+    } finally {
+      savingRef.current = false
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   // Helper: key de um participante para comparação
@@ -416,7 +528,7 @@ export default function NovoProjetoPage() {
           }} className="input-field text-xs flex-1">
           <option value="">Selecione o participante...</option>
           <optgroup label="Setores">
-            {setores.map(s => (
+            {setoresDisponiveis.map(s => (
               <option key={s.id} value={s.id} disabled={usedKeys.has(`s_${s.id}`)}>{s.codigo} — {s.nome_completo}{usedKeys.has(`s_${s.id}`) ? ' (já incluído)' : ''}</option>
             ))}
           </optgroup>
@@ -438,9 +550,12 @@ export default function NovoProjetoPage() {
   function renderAtividadeParticipanteSelect(p: AtivParticipante, idx: number, allParts: AtivParticipante[], entregaParts: Participante[], onChange: (field: string, value: any) => void, onRemove: () => void) {
     const usedUserIds = new Set(allParts.filter((_, i) => i !== idx).filter(ap => ap.user_id).map(ap => ap.user_id))
     const entregaSetorIds = new Set(entregaParts.filter(ep => ep.tipo_participante === 'setor' && ep.setor_id && ep.papel.trim()).map(ep => ep.setor_id))
-    // Filtrar usuários: setor deve estar nos participantes da entrega
+    // Filtrar usuários: gestor só vê seu próprio setor; admin/master vê setores da entrega
     const filteredUsers = eligibleUsers.filter(u => {
       if (usedUserIds.has(u.id)) return false
+      if (!isAdminOrMaster) {
+        return u.setor_id === profile?.setor_id
+      }
       if (entregaSetorIds.size === 0) return false
       return u.setor_id ? entregaSetorIds.has(u.setor_id) : false
     })
@@ -565,10 +680,10 @@ export default function NovoProjetoPage() {
                     {setores.find(s => s.id === profile.setor_id)?.codigo || ''} — {setores.find(s => s.id === profile.setor_id)?.nome_completo || ''}
                   </div>
                 ) : (
-                  <select value={setorLiderId} onChange={e => setSetorLiderId(parseInt(e.target.value) || '')} 
+                  <select value={setorLiderId} onChange={e => { setSetorLiderId(parseInt(e.target.value) || ''); setResponsavelId(null) }}
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 bg-white">
                     <option value="">Selecione o setor líder...</option>
-                    {setores.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
+                    {setoresDisponiveis.map(s => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
                   </select>
                 )}
               </div>
@@ -578,7 +693,7 @@ export default function NovoProjetoPage() {
                 <UserAutocompleteSelect
                   value={responsavelId}
                   onChange={setResponsavelId}
-                  users={eligibleUsers}
+                  users={eligibleUsers.filter(u => u.role !== 'usuario' && u.setor_id === setorLiderId)}
                   placeholder="Selecione o líder do projeto..."
                   required
                   onRegisterNew={() => setShowGestorModal(['gestor'])}
@@ -606,7 +721,7 @@ export default function NovoProjetoPage() {
                   </button>
                 </div>
                 <textarea value={problemaResolve} onChange={e => setProblemaResolve(e.target.value)} rows={4}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed" 
                   placeholder="Qual problema concreto este projeto resolve?" />
               </div>
 
@@ -618,26 +733,80 @@ export default function NovoProjetoPage() {
                   </button>
                 </div>
                 <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={4}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed" 
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed" 
                   placeholder="Descreva o que este projeto entregará" />
               </div>
 
               <div className="md:col-span-2">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso</label>
-                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
-                    <HelpCircle size={15} />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso</label>
+                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                      <HelpCircle size={15} />
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setIndicadores([...indicadores, { nome: '', formula: '', fonte_dados: '', periodicidade: '', unidade_medida: '', responsavel: '', meta: '' }])}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+                    <Plus size={14} /> Indicador
                   </button>
                 </div>
-                <textarea value={indicadorSucesso} onChange={e => setIndicadorSucesso(e.target.value)} rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed"
-                  placeholder="Sugestão de indicador de sucesso (opcional)" />
+                {indicadores.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">Nenhum indicador adicionado. Clique em &quot;+ Indicador&quot; para adicionar.</p>
+                )}
+                <div className="space-y-3">
+                  {indicadores.map((ind, idx) => (
+                    <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-4 relative">
+                      <button type="button" onClick={() => setIndicadores(indicadores.filter((_, i) => i !== idx))}
+                        className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Remover indicador">
+                        <Trash2 size={16} />
+                      </button>
+                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Indicador {idx + 1}</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-500 mb-0.5 block">Nome <span className="text-red-500">*</span></label>
+                          <input type="text" value={ind.nome} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, nome: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Identificação precisa do que está sendo medido" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-500 mb-0.5 block">Fórmula de Cálculo</label>
+                          <input type="text" value={ind.formula} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, formula: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Definição matemática exata de como o valor é obtido" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-0.5 block">Fonte de Dados</label>
+                          <input type="text" value={ind.fonte_dados} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, fonte_dados: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="De onde virão as informações (sistemas, relatórios, pesquisas)" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-0.5 block">Periodicidade/Frequência</label>
+                          <input type="text" value={ind.periodicidade} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, periodicidade: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Com que frequência será medido (diário, mensal, anual)" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-0.5 block">Unidade de Medida</label>
+                          <input type="text" value={ind.unidade_medida} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, unidade_medida: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Porcentagem, valor monetário, tempo, quantidade absoluta" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-0.5 block">Responsável</label>
+                          <input type="text" value={ind.responsavel} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, responsavel: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Quem é o proprietário do indicador e responsável pela ação sobre ele" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-500 mb-0.5 block">Meta</label>
+                          <input type="text" value={ind.meta} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, meta: e.target.value } : item))}
+                            className="input-field text-sm" placeholder="Valor ou resultado esperado" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Dependências com outros projetos</label>
                 <textarea value={dependenciasProjetos} onChange={e => setDependenciasProjetos(e.target.value)} rows={2}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-none leading-relaxed"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
                   placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
               </div>
             </div>
@@ -712,7 +881,7 @@ export default function NovoProjetoPage() {
                   <input type="text" value={e.nome} onChange={ev => updateEntrega(eIdx, 'nome', ev.target.value)}
                     placeholder="Nome da entrega *" className="input-field text-sm" />
                   <textarea value={e.descricao} onChange={ev => updateEntrega(eIdx, 'descricao', ev.target.value)}
-                    placeholder="Descrição da entrega *" className="input-field text-sm resize-none" rows={2} />
+                    placeholder="Descrição da entrega *" className="input-field text-sm resize-y" rows={2} />
                   <div>
                     <label className="text-xs font-medium text-gray-500">Critérios de aceite <span className="text-red-500">*</span></label>
                     <input type="text" value={e.criterios_aceite} onChange={ev => updateEntrega(eIdx, 'criterios_aceite', ev.target.value)}
@@ -740,7 +909,7 @@ export default function NovoProjetoPage() {
                   {/* Órgão responsável + Responsável */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-gray-500">Órgão responsável</label>
+                      <label className="text-xs font-medium text-gray-500">Órgão responsável *</label>
                       <select
                         value={e.orgao_responsavel_setor_id || ''}
                         onChange={ev => {
@@ -754,19 +923,16 @@ export default function NovoProjetoPage() {
                         }}
                         className="input-field text-xs">
                         <option value="">Selecione...</option>
-                        {e.participantes
-                          .filter(p => p.tipo_participante === 'setor' && p.setor_id && p.papel.trim())
-                          .map(p => {
-                            const s = setores.find(ss => ss.id === p.setor_id)
-                            return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
-                          })}
+                        {setoresDisponiveis.map(s => (
+                          <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>
+                        ))}
                       </select>
-                      {e.participantes.filter(p => p.tipo_participante === 'setor' && p.setor_id && p.papel.trim()).length === 0 && (
-                        <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
-                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Responsável pela entrega *</label>
+                      {!e.orgao_responsavel_setor_id ? (
+                        <p className="text-[10px] text-gray-400 mt-1 italic px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">Selecione o órgão responsável primeiro.</p>
+                      ) : (
                       <UserAutocompleteSelect
                         value={e.responsavel_entrega_id}
                         onChange={val => {
@@ -774,11 +940,12 @@ export default function NovoProjetoPage() {
                           updated[eIdx].responsavel_entrega_id = val
                           setEntregas(updated)
                         }}
-                        users={eligibleUsers.filter(u => u.id === e.responsavel_entrega_id || (!e.orgao_responsavel_setor_id || u.setor_id === e.orgao_responsavel_setor_id))}
+                        users={eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === e.responsavel_entrega_id || u.setor_id === e.orgao_responsavel_setor_id))}
                         placeholder="Selecione o responsável..."
                         required
                         onRegisterNew={() => setShowGestorModal(['gestor'])}
                       />
+                      )}
                     </div>
                   </div>
 
@@ -828,7 +995,7 @@ export default function NovoProjetoPage() {
                     <label className="text-xs font-medium text-gray-500">Dependências críticas</label>
                     <textarea value={e.dependencias_criticas}
                       onChange={ev => updateEntrega(eIdx, 'dependencias_criticas', ev.target.value)}
-                      placeholder="ex: custos específicos, tempo de licitação, dependência de ação de algum setor..." className="input-field text-xs resize-none" rows={2} />
+                      placeholder="ex: custos específicos, tempo de licitação, dependência de ação de algum setor..." className="input-field text-xs resize-y" rows={2} />
                     <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                   </div>
 
@@ -865,7 +1032,7 @@ export default function NovoProjetoPage() {
                           <input type="text" value={a.nome} onChange={ev => updateAtividade(eIdx, aIdx, 'nome', ev.target.value)}
                             placeholder="Nome da atividade *" className="input-field text-xs" />
                           <textarea value={a.descricao} onChange={ev => updateAtividade(eIdx, aIdx, 'descricao', ev.target.value)}
-                            placeholder="Descrição da atividade *" className="input-field text-xs resize-none" rows={2} />
+                            placeholder="Descrição da atividade *" className="input-field text-xs resize-y" rows={2} />
 
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Responsável pela atividade *</label>
@@ -877,8 +1044,11 @@ export default function NovoProjetoPage() {
                                 setEntregas(updated)
                               }}
                               users={(() => {
+                                if (!isAdminOrMaster) {
+                                  return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === a.responsavel_atividade_id || u.setor_id === profile?.setor_id))
+                                }
                                 const entregaSetorIds = new Set(e.participantes.filter(p => p.tipo_participante === 'setor' && p.setor_id).map(p => p.setor_id))
-                                return eligibleUsers.filter(u => u.id === a.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                                return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === a.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id))))
                               })()}
                               placeholder="Selecione o responsável..."
                               required

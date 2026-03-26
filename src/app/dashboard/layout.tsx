@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen } from 'lucide-react'
+import ManualModal from '@/components/ManualModal'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -13,8 +14,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingSolicitantes, setPendingSolicitantes] = useState(0)
   const [urgentActivities, setUrgentActivities] = useState(0)
   const [urgentProjectIds, setUrgentProjectIds] = useState<number[]>([])
-  const [alertasCount, setAlertasCount] = useState(0)
-  const [alertasProjectIds, setAlertasProjectIds] = useState<number[]>([])
+  const [alertas, setAlertas] = useState<any[]>([])
+  const [alertasExpanded, setAlertasExpanded] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -41,7 +43,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const nowStr = now.toISOString().split('T')[0]
         const limitStr = in7Days.toISOString().split('T')[0]
         
-        const { data: urgentData, count } = await supabase.from('atividades')
+        // Atividades com prazo próximo
+        const { data: urgentAtivData, count: urgentAtivCount } = await supabase.from('atividades')
           .select('id, entregas!inner(projeto_id)', { count: 'exact' })
           .eq('responsavel_atividade_id', data.id)
           .neq('status', 'resolvida')
@@ -49,22 +52,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .gte('data_prevista', nowStr)
           .lte('data_prevista', limitStr)
 
-        if (count) setUrgentActivities(count)
-        if (urgentData && urgentData.length > 0) {
-          const pIds = Array.from(new Set(urgentData.map((a: any) => a.entregas?.projeto_id).filter(Boolean))) as number[]
-          setUrgentProjectIds(pIds)
-        }
-
-        // Fetch alertas não lidos (edições/exclusões em entregas/atividades)
-        const { data: alertasData, count: alertasTotal } = await supabase.from('alertas')
+        // Entregas com prazo próximo (responsável pela entrega — com ou sem atividades)
+        const { data: urgentEntregaData, count: urgentEntregaCount } = await supabase.from('entregas')
           .select('id, projeto_id', { count: 'exact' })
+          .eq('responsavel_entrega_id', data.id)
+          .neq('status', 'resolvida')
+          .neq('status', 'cancelada')
+          .gte('data_final_prevista', nowStr)
+          .lte('data_final_prevista', limitStr)
+
+        const totalUrgent = (urgentAtivCount || 0) + (urgentEntregaCount || 0)
+        if (totalUrgent > 0) setUrgentActivities(totalUrgent)
+
+        const pIdsFromAtiv = (urgentAtivData || []).map((a: any) => a.entregas?.projeto_id).filter(Boolean)
+        const pIdsFromEntrega = (urgentEntregaData || []).map((e: any) => e.projeto_id).filter(Boolean)
+        const allPIds = Array.from(new Set([...pIdsFromAtiv, ...pIdsFromEntrega])) as number[]
+        if (allPIds.length > 0) setUrgentProjectIds(allPIds)
+
+        // Fetch alertas não lidos
+        const { data: alertasData } = await supabase.from('alertas')
+          .select('id, tipo, entidade, entidade_nome, projeto_id, projeto_nome, descricao, created_at')
           .eq('destinatario_id', data.id)
           .eq('lido', false)
-        if (alertasTotal) setAlertasCount(alertasTotal)
-        if (alertasData && alertasData.length > 0) {
-          const apIds = Array.from(new Set(alertasData.map((a: any) => a.projeto_id).filter(Boolean))) as number[]
-          setAlertasProjectIds(apIds)
-        }
+          .order('created_at', { ascending: false })
+        if (alertasData) setAlertas(alertasData)
 
         // Guarda: se solicitante, redirecionar para /pendente
         if (data.role === 'solicitante') {
@@ -187,11 +198,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <User size={16} className="text-gray-400" />
                 <div className="hidden sm:flex flex-col items-end leading-tight">
                   <span className="text-gray-300 text-xs">{profile?.nome}</span>
-                  {(profile as any)?.setores?.codigo && (
+                  {profile?.role !== 'admin' && (profile as any)?.setores?.codigo && (
                     <span className="text-[10px] text-gray-500">{(profile as any).setores.codigo}</span>
                   )}
                 </div>
                 <span className="text-xs bg-orange-600 px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
+              </button>
+
+              <button onClick={() => setManualOpen(true)} className="text-gray-400 hover:text-sedec-400 transition-colors" title="Manual de Utilização">
+                <BookOpen size={18} />
               </button>
 
               <button onClick={handleLogout} className="text-gray-400 hover:text-white transition-colors" title="Sair">
@@ -225,37 +240,81 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {urgentActivities > 0 && (
         <div onClick={() => router.push(`/dashboard/projetos${urgentProjectIds.length > 0 ? `?alerta=${urgentProjectIds.join(',')}` : ''}`)}
-          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner cursor-pointer transition-colors z-40 relative">
+          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner cursor-pointer transition-colors z-40 relative">
           <AlertCircle size={18} className="animate-pulse shrink-0" />
           <span className="font-medium text-center">
-            Atenção! Você é responsável por {urgentActivities} atividade{urgentActivities > 1 ? 's' : ''} com prazo para os próximos 7 dias.
+            Atenção! Você é responsável por {urgentActivities} item(ns) com prazo para os próximos 7 dias.
           </span>
         </div>
       )}
 
-      {alertasCount > 0 && (
-        <div className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 text-sm shadow-inner z-40 relative">
-          <AlertCircle size={18} className="shrink-0" />
-          <span
-            onClick={() => router.push(`/dashboard/projetos?alerta_impacto=${alertasProjectIds.join(',')}`)}
-            className="font-medium text-center cursor-pointer hover:underline"
-          >
-            {alertasCount} alteração(ões) em entregas/atividades sob sua responsabilidade. Ver detalhes
-          </span>
-          <button
-            onClick={async (e) => {
-              e.stopPropagation()
-              await supabase.from('alertas').update({ lido: true }).eq('destinatario_id', profile!.id).eq('lido', false)
-              setAlertasCount(0)
-              setAlertasProjectIds([])
-            }}
-            className="ml-2 text-white/80 hover:text-white font-bold text-lg leading-none"
-            title="Marcar todos como lidos"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {alertas.length > 0 && (() => {
+        // Group alerts by projeto_id
+        const grouped: Record<number, { projeto_nome: string; items: typeof alertas }> = {}
+        for (const al of alertas) {
+          const pid = al.projeto_id || 0
+          if (!grouped[pid]) grouped[pid] = { projeto_nome: al.projeto_nome || 'Sem projeto', items: [] }
+          grouped[pid].items.push(al)
+        }
+        return (
+          <div className="bg-orange-500 text-white z-40 relative">
+            {/* Header bar - always visible */}
+            <div
+              className="px-4 py-2.5 flex items-center justify-center gap-2 text-sm cursor-pointer hover:bg-orange-600 transition-colors"
+              onClick={() => setAlertasExpanded(!alertasExpanded)}
+            >
+              <AlertCircle size={18} className="shrink-0" />
+              <span className="font-medium">
+                {alertas.length} notificação{alertas.length > 1 ? 'ões' : ''} não lida{alertas.length > 1 ? 's' : ''}
+              </span>
+              {alertasExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  await supabase.from('alertas').update({ lido: true }).eq('destinatario_id', profile!.id).eq('lido', false)
+                  setAlertas([])
+                  setAlertasExpanded(false)
+                }}
+                className="ml-2 text-white/80 hover:text-white text-xs underline"
+                title="Marcar todos como lidos"
+              >
+                Limpar tudo
+              </button>
+            </div>
+            {/* Expandable section */}
+            {alertasExpanded && (
+              <div className="bg-orange-600/90 px-4 pb-3 max-h-64 overflow-y-auto">
+                {Object.entries(grouped).map(([pid, group]) => (
+                  <div key={pid} className="mb-2">
+                    <button
+                      onClick={() => router.push(`/dashboard/projetos/${pid}`)}
+                      className="text-xs font-bold text-orange-100 hover:text-white hover:underline mb-1 block"
+                    >
+                      {group.projeto_nome}
+                    </button>
+                    {group.items.map((al) => (
+                      <div key={al.id} className="flex items-start gap-2 text-xs text-orange-50 py-0.5 pl-3">
+                        <span className="flex-1">{al.descricao}</span>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            await supabase.from('alertas').update({ lido: true }).eq('id', al.id)
+                            setAlertas(prev => prev.filter(a => a.id !== al.id))
+                          }}
+                          className="text-orange-200 hover:text-white shrink-0 mt-0.5"
+                          title="Dispensar"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
@@ -271,6 +330,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span className="text-xs text-gray-300">Desenvolvido por ICTDEC</span>
         </div>
       </footer>
+
+      <ManualModal open={manualOpen} onClose={() => setManualOpen(false)} />
     </div>
   )
 }

@@ -1219,7 +1219,14 @@ function UsuariosAdmin({ isMaster = false, adminProfile: profile }: { isMaster?:
             {users.map(u => (
               <tr key={u.id} className={`hover:bg-gray-50 ${u.role === 'solicitante' ? 'bg-yellow-50/50' : ''}`}>
                 <td className="px-4 py-3">
-                  {isMaster ? (
+                  {u.role === 'solicitante' && u.perfil_solicitado && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium mb-0.5 inline-block ${
+                      u.perfil_solicitado === 'gestor' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-gray-50 text-gray-500 border border-gray-200'
+                    }`}>
+                      Solicitou: {u.perfil_solicitado === 'gestor' ? 'Gestor' : 'Usuário'}
+                    </span>
+                  )}
+                  {(isMaster && (u.role === 'admin' || u.role === 'master')) ? (
                     <span className="font-medium text-gray-800 text-left">{u.nome}</span>
                   ) : editingNome === u.id ? (
                     <div className="flex items-center gap-1">
@@ -1259,14 +1266,18 @@ function UsuariosAdmin({ isMaster = false, adminProfile: profile }: { isMaster?:
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <select disabled={isMaster} value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
-                    className="text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-75 disabled:bg-gray-50">
-                    <option value="">Sem setor</option>
-                    {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
-                  </select>
+                  {u.role === 'admin' ? (
+                    <span className="text-xs text-gray-400">—</span>
+                  ) : (
+                    <select disabled={isMaster && (u.role === 'admin' || u.role === 'master')} value={u.setor_id || ''} onChange={e => updateSetor(u.id, e.target.value ? Number(e.target.value) : null)}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-75 disabled:bg-gray-50">
+                      <option value="">Sem setor</option>
+                      {setoresCadastro.map(s => <option key={s.id} value={s.id}>{s.codigo}</option>)}
+                    </select>
+                  )}
                 </td>
                 <td className="px-4 py-3">
-                  <select disabled={isMaster} value={u.role} onChange={e => updateRole(u.id, e.target.value)}
+                  <select disabled={isMaster && (u.role === 'admin' || u.role === 'master')} value={u.role} onChange={e => updateRole(u.id, e.target.value)}
                     className={`text-xs font-medium rounded px-2 py-1 border disabled:opacity-75 ${
                       u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
                       u.role === 'master' ? 'bg-orange-50 border-orange-200 text-orange-700' :
@@ -1277,13 +1288,13 @@ function UsuariosAdmin({ isMaster = false, adminProfile: profile }: { isMaster?:
                     <option value="solicitante">Solicitante</option>
                     <option value="usuario">Usuário</option>
                     <option value="gestor">Gestor</option>
-                    <option value="master">Master</option>
-                    <option value="admin">Admin</option>
+                    {!isMaster && <option value="master">Master</option>}
+                    {!isMaster && <option value="admin">Admin</option>}
                   </select>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-1.5 items-start">
-                    {!isMaster && (
+                    {(!isMaster || (u.role !== 'admin' && u.role !== 'master')) && (
                       <div className="flex items-center gap-2">
                         {u.senha_zerada && (
                           <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Senha zerada</span>
@@ -1307,8 +1318,8 @@ function UsuariosAdmin({ isMaster = false, adminProfile: profile }: { isMaster?:
                       </div>
                     )}
 
-                    {/* Excluir usuário — somente admin */}
-                    {!isMaster && (deleteConfirm === u.id ? (
+                    {/* Excluir usuário */}
+                    {(!isMaster || (u.role !== 'admin' && u.role !== 'master')) && (deleteConfirm === u.id ? (
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-gray-500">Excluir?</span>
                         <button onClick={() => handleDeleteUser(u.id)} disabled={savingUser === u.id}

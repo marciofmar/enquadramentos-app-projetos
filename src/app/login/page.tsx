@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [emailAtivo, setEmailAtivo] = useState(false)
+  const [perfilSolicitado, setPerfilSolicitado] = useState('usuario')
   const [showForgot, setShowForgot] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -58,7 +59,7 @@ export default function LoginPage() {
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { nome, setor_id: parseInt(setorId) } }
+        options: { data: { nome, setor_id: parseInt(setorId), perfil_solicitado: perfilSolicitado } }
       })
       if (signUpError) {
         setError(signUpError.message)
@@ -203,14 +204,14 @@ export default function LoginPage() {
             {isSignUp && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Posto e Nome de Guerra</label>
                   <input
                     type="text"
                     value={nome}
                     onChange={e => setNome(e.target.value)}
                     className="input-field"
                     required
-                    placeholder="Seu nome"
+                    placeholder="ex: Maj BM Fulano"
                   />
                 </div>
 
@@ -233,6 +234,24 @@ export default function LoginPage() {
                   </select>
                   <p className="text-xs text-gray-400 mt-1">
                     Seu setor determina as permissões de edição de projetos.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Perfil desejado <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={perfilSolicitado}
+                    onChange={e => setPerfilSolicitado(e.target.value)}
+                    className="input-field"
+                    required
+                  >
+                    <option value="usuario">Usuário (somente leitura)</option>
+                    <option value="gestor">Gestor (pode criar/editar projetos)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    O administrador definirá seu perfil final ao aprovar o cadastro.
                   </p>
                 </div>
               </>

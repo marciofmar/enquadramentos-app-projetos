@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Edit3, Trash2, Save, X, Plus, PackagePlus, ListPlus,
-  CheckCircle, CheckCircle2, XCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle
+  CheckCircle, CheckCircle2, XCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle, Pause
 } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
@@ -42,6 +42,7 @@ const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   atrasado: { label: 'Atrasado', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-300', icon: AlertTriangle },
   concluido: { label: 'Concluído', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-300', icon: CheckCircle2 },
   cancelado: { label: 'Cancelado', color: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-300', icon: XCircle },
+  hibernando: { label: 'Hibernando', color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-300', icon: Pause },
 }
 
 export default function ProjetoDetalhePage() {
@@ -77,8 +78,12 @@ export default function ProjetoDetalhePage() {
   const [newEntregaForm, setNewEntregaForm] = useState<any>({})
   const [allExpanded, setAllExpanded] = useState(false)
 
-  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; setor_id: number | null; setor_codigo: string | null }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; email: string; role: string; setor_id: number | null; setor_codigo: string | null }[]>([])
+  const [masterIds, setMasterIds] = useState<string[]>([])
   const [showGestorModal, setShowGestorModal] = useState<false | ('gestor' | 'usuario')[]>(false)
+  const [indicadores, setIndicadores] = useState<any[]>([])
+
+  const savingRef = useRef(false)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalShowCheckbox, setModalShowCheckbox] = useState(false)
@@ -113,17 +118,21 @@ export default function ProjetoDetalhePage() {
     if (s) setSetores(s)
 
     const { data: usersData } = await supabase.from('profiles')
-      .select('id, nome, email, setor_id, setores:setor_id(codigo)')
-      .not('role', 'eq', 'solicitante')
+      .select('id, nome, email, role, setor_id, setores:setor_id(codigo)')
+      .in('role', ['gestor', 'master', 'usuario'])
       .eq('ativo', true)
       .order('nome')
     if (usersData) setEligibleUsers(usersData.map((u: any) => ({
-      id: u.id, nome: u.nome, email: u.email,
+      id: u.id, nome: u.nome, email: u.email, role: u.role,
       setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
     })))
 
     const { data: a } = await supabase.from('acoes_estrategicas').select('id, numero, nome').order('numero')
     if (a) setAcoes(a)
+
+    // Carregar IDs dos masters para enviar alertas
+    const { data: mastersData } = await supabase.from('profiles').select('id').eq('role', 'master')
+    if (mastersData) setMasterIds(mastersData.map((m: any) => m.id))
 
     const { data: proj } = await supabase.from('projetos')
       .select(`*, responsavel_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
@@ -159,6 +168,10 @@ export default function ProjetoDetalhePage() {
       proj.entregas?.forEach((e: any) => { exp[e.id] = false })
       setExpanded(exp)
 
+      // Carregar indicadores do projeto
+      const { data: indData } = await supabase.from('indicadores').select('*').eq('projeto_id', id).order('id')
+      if (indData) setIndicadores(indData)
+
       // Carregar solicitações do projeto
       const { data: sols } = await supabase.from('solicitacoes_alteracao')
         .select('*').eq('projeto_id', id).order('created_at', { ascending: false })
@@ -172,21 +185,24 @@ export default function ProjetoDetalhePage() {
   const isGestor = profile?.role === 'gestor'
   const isSetorLider = isGestor && profile?.setor_id === projeto?.setor_lider_id
 
+  const setoresDisponiveis = useMemo(() => isAdminOrMaster ? setores : setores.filter(s => s.id === profile?.setor_id), [setores, isAdminOrMaster, profile])
+  const usuariosDisponiveis = useMemo(() => isAdminOrMaster ? eligibleUsers : eligibleUsers.filter(u => u.setor_id === profile?.setor_id), [eligibleUsers, isAdminOrMaster, profile])
+
   // Level 1+2: Project and entregas (setor líder)
-  const canCreateProjeto = isAdminOrMaster || (isGestor && configs['proj_permitir_cadastro'] !== 'false')
+  const canCreateProjeto = isAdminOrMaster || (isSetorLider && configs['proj_permitir_cadastro'] !== 'false')
   const canEditProjeto = isAdminOrMaster || (isSetorLider && configs['proj_permitir_edicao'] !== 'false')
 
   // Per-entrega permissions (Levels 2-4)
   function getEntregaPerms(entrega: any) {
-    const isSetorResp = isGestor && profile?.setor_id === entrega?.orgao_responsavel_setor_id
+    const isRespEntrega = isGestor && profile?.id === entrega?.responsavel_entrega_id
     return {
       canFull: isAdminOrMaster || (isSetorLider && configs['proj_permitir_edicao'] !== 'false'),
-      canEditLimited: !isSetorLider && isSetorResp && configs['proj_permitir_edicao'] !== 'false',
-      canEditDatas: isAdminOrMaster || ((isSetorLider || isSetorResp) && configs['proj_permitir_edicao_datas'] !== 'false'),
-      canCrudAtividades: isAdminOrMaster || (isSetorResp && configs['proj_permitir_edicao_atividades'] !== 'false'),
-      canCreateAtividades: isAdminOrMaster || (isSetorResp && configs['proj_permitir_cadastro_atividades'] !== 'false'),
-      canEditDatasAtividades: isAdminOrMaster || ((isSetorResp) && configs['proj_permitir_edicao_datas_atividades'] !== 'false'),
-      needsApproval: !isAdminOrMaster && (isSetorLider || isSetorResp) && configs['proj_exigir_aprovacao_edicao'] === 'true',
+      canEditLimited: !isSetorLider && isRespEntrega && configs['proj_permitir_edicao'] !== 'false',
+      canEditDatas: isAdminOrMaster || ((isSetorLider || isRespEntrega) && configs['proj_permitir_edicao_datas'] !== 'false'),
+      canCrudAtividades: isAdminOrMaster || (isRespEntrega && !!entrega?.responsavel_entrega_id && configs['proj_permitir_edicao_atividades'] !== 'false'),
+      canCreateAtividades: isAdminOrMaster || (isRespEntrega && !!entrega?.responsavel_entrega_id && configs['proj_permitir_cadastro_atividades'] !== 'false'),
+      canEditDatasAtividades: isAdminOrMaster || ((isRespEntrega) && configs['proj_permitir_edicao_datas_atividades'] !== 'false'),
+      needsApproval: !isAdminOrMaster && (isSetorLider || isRespEntrega) && configs['proj_exigir_aprovacao_edicao'] === 'true',
     }
   }
 
@@ -197,6 +213,21 @@ export default function ProjetoDetalhePage() {
       canFull: entregaPerms.canCrudAtividades,
       canEditLimited: !entregaPerms.canCrudAtividades && isRespAtividade && configs['proj_permitir_edicao_atividades'] !== 'false',
       canEditDatas: entregaPerms.canEditDatasAtividades || (isRespAtividade && configs['proj_permitir_edicao_datas_atividades'] !== 'false'),
+    }
+  }
+
+  // Helper: adicionar alertas para todos os masters (quando não é fluxo de aprovação)
+  function appendMasterAlerts(alertas: any[], alertaBase: { tipo: string; entidade: string; entidade_id: number; entidade_nome: string; projeto_id: number; projeto_nome: string; descricao: string }) {
+    if (configs['proj_exigir_aprovacao_edicao'] === 'true') return // Se aprovação está ativa, masters já veem via solicitações
+    const existingIds = new Set(alertas.map((a: any) => a.destinatario_id))
+    for (const mId of masterIds) {
+      if (mId !== profile?.id && !existingIds.has(mId)) {
+        alertas.push({
+          destinatario_id: mId,
+          ...alertaBase,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+        })
+      }
     }
   }
 
@@ -213,12 +244,21 @@ export default function ProjetoDetalhePage() {
 
   // Status do projeto (calculado a partir das entregas)
   const statusProjeto = useMemo(() => {
+    if (projeto?.status === 'hibernando') return 'hibernando'
     const entregas = projeto?.entregas || []
     if (entregas.length === 0) return 'em_andamento'
     if (entregas.every((e: any) => e.status === 'cancelada')) return 'cancelado'
     if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) return 'concluido'
     return 'em_andamento'
   }, [projeto])
+
+  async function toggleHibernando() {
+    const newStatus = projeto.status === 'hibernando' ? 'ativo' : 'hibernando'
+    const { error } = await supabase.from('projetos').update({ status: newStatus }).eq('id', projeto.id)
+    if (error) { alert(error.message); return }
+    await auditLog('update', 'projeto', projeto.id, { status: projeto.status }, { status: newStatus })
+    loadAll()
+  }
 
   // needsApproval for project-level operations (setor líder)
   const needsApprovalProjeto = !isAdminOrMaster && isSetorLider && configs['proj_exigir_aprovacao_edicao'] === 'true'
@@ -286,17 +326,37 @@ export default function ProjetoDetalhePage() {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
       responsavel_id: projeto.responsavel_id || '',
       data_inicio: projeto.data_inicio || '',
-      indicador_sucesso: projeto.indicador_sucesso || '',
       dependencias_projetos: projeto.dependencias_projetos || '',
       tipo_acao: projeto.tipo_acao || [],
       setor_lider_id: projeto.setor_lider_id,
-      acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || []
+      acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || [],
+      indicadores: indicadores.map(i => ({ ...i }))
     })
     setEditingProjeto(true)
   }
 
   async function saveEditProjeto() {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
+
+    // Validação de campos obrigatórios
+    if (!editForm.nome?.trim() || !editForm.descricao?.trim() || !editForm.problema_resolve?.trim()) {
+      alert('Preencha nome, descrição e problema que resolve.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.setor_lider_id) {
+      alert('Selecione o setor líder.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.acoes || editForm.acoes.length === 0) {
+      alert('Selecione ao menos uma ação estratégica.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.responsavel_id) {
+      alert('Selecione o líder do projeto.')
+      savingRef.current = false; setSaving(false); return
+    }
 
     // R5: Se data_inicio mudou, validar contra datas de entregas e atividades
     if (editForm.data_inicio && editForm.data_inicio !== projeto.data_inicio) {
@@ -304,12 +364,12 @@ export default function ProjetoDetalhePage() {
       for (const ent of entregas) {
         if (ent.data_final_prevista && ent.data_final_prevista < editForm.data_inicio) {
           alert(`A data de início não pode ser posterior à quinzena da entrega "${ent.nome}" (${ent.data_final_prevista}).`)
-          setSaving(false); return
+          savingRef.current = false; setSaving(false); return
         }
         for (const ativ of (ent.atividades || [])) {
           if (ativ.data_prevista && ativ.data_prevista < editForm.data_inicio) {
             alert(`A data de início não pode ser posterior à data da atividade "${ativ.nome}" (${ativ.data_prevista}).`)
-            setSaving(false); return
+            savingRef.current = false; setSaving(false); return
           }
         }
       }
@@ -318,28 +378,27 @@ export default function ProjetoDetalhePage() {
     if (needsApprovalProjeto) {
       if (hasPendingSolicitacao('projeto', projeto.id)) {
         alert('Já existe uma solicitação pendente para este projeto. Aguarde a avaliação.')
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
       const dados = {
         nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
         responsavel_id: editForm.responsavel_id || null,
         data_inicio: editForm.data_inicio || null,
-        indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
         dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
         tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
         setor_lider_id: editForm.setor_lider_id,
         acoes: editForm.acoes,
+        indicadores: editForm.indicadores,
       }
       const ok = await criarSolicitacao('projeto', projeto.id, projeto.nome, 'edicao', dados)
       if (ok) { setEditingProjeto(false); loadAll() }
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     const novosDados = {
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
       responsavel_id: editForm.responsavel_id || null,
       data_inicio: editForm.data_inicio || null,
-      indicador_sucesso: editForm.indicador_sucesso?.trim() || null,
       dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
       tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
       setor_lider_id: editForm.setor_lider_id,
@@ -347,12 +406,11 @@ export default function ProjetoDetalhePage() {
     const anterior = {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
       responsavel_id: projeto.responsavel_id, data_inicio: projeto.data_inicio,
-      indicador_sucesso: projeto.indicador_sucesso,
       dependencias_projetos: projeto.dependencias_projetos,
       tipo_acao: projeto.tipo_acao, setor_lider_id: projeto.setor_lider_id,
     }
     const { error } = await supabase.from('projetos').update(novosDados).eq('id', projeto.id)
-    if (error) { alert(error.message); setSaving(false); return }
+    if (error) { alert(error.message); savingRef.current = false; setSaving(false); return }
 
     await supabase.from('projeto_acoes').delete().eq('projeto_id', projeto.id)
     if (editForm.acoes.length > 0) {
@@ -360,7 +418,101 @@ export default function ProjetoDetalhePage() {
         editForm.acoes.map((aid: number) => ({ projeto_id: projeto.id, acao_estrategica_id: aid })))
     }
 
+    // Validate indicador nome required
+    const indicadoresComDados = (editForm.indicadores || []).filter((i: any) => i.nome || i.formula || i.fonte_dados || i.periodicidade || i.unidade_medida || i.responsavel || i.meta)
+    if (indicadoresComDados.some((i: any) => !i.nome?.trim())) {
+      alert('Preencha o campo "Nome" de todos os indicadores.')
+      savingRef.current = false; setSaving(false); return
+    }
+
+    // Save indicadores: delete all then re-insert
+    await supabase.from('indicadores').delete().eq('projeto_id', projeto.id)
+    if (indicadoresComDados.length > 0) {
+      await supabase.from('indicadores').insert(indicadoresComDados.map((i: any) => ({
+        projeto_id: projeto.id, nome: i.nome || '', formula: i.formula || '', fonte_dados: i.fonte_dados || '',
+        periodicidade: i.periodicidade || '', unidade_medida: i.unidade_medida || '', responsavel: i.responsavel || '', meta: i.meta || ''
+      })))
+    }
+
     await auditLog('update', 'projeto', projeto.id, anterior, novosDados)
+
+    // Collect alerts for edicao_projeto
+    const alertasEdit: any[] = []
+
+    // Send edicao_projeto to project leader
+    if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+      alertasEdit.push({
+        destinatario_id: projeto.responsavel_id,
+        tipo: 'edicao_projeto',
+        entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Edição de projeto ${projeto.nome}`
+      })
+    }
+
+    // Send edicao_projeto to all unique entrega responsaveis
+    const entregaRespIds = new Set<string>()
+    for (const ent of (projeto.entregas || [])) {
+      if (ent.responsavel_entrega_id && ent.responsavel_entrega_id !== profile!.id && ent.responsavel_entrega_id !== projeto.responsavel_id) {
+        entregaRespIds.add(ent.responsavel_entrega_id)
+      }
+    }
+    for (const rid of Array.from(entregaRespIds)) {
+      alertasEdit.push({
+        destinatario_id: rid,
+        tipo: 'edicao_projeto',
+        entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+        projeto_id: projeto.id, projeto_nome: projeto.nome,
+        autor_id: profile!.id, autor_nome: profile!.nome,
+        descricao: `Edição de projeto ${projeto.nome}`
+      })
+    }
+
+    // If leader changed, send nomeacao_lider to old leader, new leader, and gestores of setor_lider
+    if (editForm.responsavel_id !== projeto.responsavel_id) {
+      // Notify OLD leader
+      if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+        alertasEdit.push({
+          destinatario_id: projeto.responsavel_id,
+          tipo: 'nomeacao_lider',
+          entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: `Você foi removido(a) como líder do projeto ${projeto.nome}`
+        })
+      }
+      // Notify NEW leader
+      if (editForm.responsavel_id && editForm.responsavel_id !== profile!.id) {
+        alertasEdit.push({
+          destinatario_id: editForm.responsavel_id,
+          tipo: 'nomeacao_lider',
+          entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+          projeto_id: projeto.id, projeto_nome: projeto.nome,
+          autor_id: profile!.id, autor_nome: profile!.nome,
+          descricao: `Nomeação como líder do projeto ${projeto.nome}`
+        })
+      }
+      // Notify gestores of setor_lider
+      const setorLiderAtual = novosDados.setor_lider_id || projeto.setor_lider_id
+      if (setorLiderAtual) {
+        const { data: gestoresSetorLider } = await supabase.from('profiles')
+          .select('id').eq('setor_id', setorLiderAtual).eq('role', 'gestor')
+        const gestorIds = (gestoresSetorLider || [])
+          .map((g: any) => g.id)
+          .filter((gId: string) => gId !== profile!.id && gId !== projeto.responsavel_id && gId !== editForm.responsavel_id)
+        for (const gId of gestorIds) {
+          alertasEdit.push({
+            destinatario_id: gId,
+            tipo: 'nomeacao_lider',
+            entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+            projeto_id: projeto.id, projeto_nome: projeto.nome,
+            autor_id: profile!.id, autor_nome: profile!.nome,
+            descricao: `O líder do projeto ${projeto.nome} foi alterado`
+          })
+        }
+      }
+    }
 
     // Alerta quando setor_lider_id muda
     const oldSetorLiderId = projeto.setor_lider_id
@@ -379,19 +531,27 @@ export default function ProjetoDetalhePage() {
         .filter((g: any) => g.id !== profile!.id)
       const uniqueGestorIds = Array.from(new Set(allGestores.map((g: any) => g.id)))
 
-      if (uniqueGestorIds.length > 0) {
-        await supabase.from('alertas').insert(uniqueGestorIds.map(gId => ({
+      for (const gId of uniqueGestorIds) {
+        alertasEdit.push({
           destinatario_id: gId,
           tipo: 'alteracao_setor_lider',
           entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
           projeto_id: projeto.id, projeto_nome: projeto.nome,
           autor_id: profile!.id, autor_nome: profile!.nome,
           descricao: descAlerta
-        })))
+        })
       }
     }
 
-    setEditingProjeto(false); setSaving(false); loadAll()
+    appendMasterAlerts(alertasEdit, {
+      tipo: 'edicao_projeto', entidade: 'projeto', entidade_id: projeto.id, entidade_nome: projeto.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Edição de projeto ${projeto.nome}`
+    })
+    if (alertasEdit.length > 0) {
+      await supabase.from('alertas').insert(alertasEdit)
+    }
+
+    setEditingProjeto(false); savingRef.current = false; setSaving(false); loadAll()
   }
 
   async function deleteProject() {
@@ -443,27 +603,71 @@ export default function ProjetoDetalhePage() {
   }
 
   async function saveEditEntrega(entregaId: number) {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
+
+    // Validação de setor para gestores
+    if (!isAdminOrMaster) {
+      if (editForm.orgao_responsavel_setor_id && editForm.orgao_responsavel_setor_id !== profile?.setor_id) {
+        alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+        savingRef.current = false; setSaving(false); return
+      }
+      const partSetores = (editForm.participantes || []).filter((p: any) => p.papel?.trim() && p.tipo_participante === 'setor')
+      if (partSetores.some((p: any) => p.setor_id !== profile?.setor_id)) {
+        alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+        savingRef.current = false; setSaving(false); return
+      }
+    }
+
+    // Validação de campos obrigatórios
+    if (!editForm.nome?.trim() || !editForm.descricao?.trim()) {
+      alert('Preencha nome e descrição da entrega.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.criterios_aceite?.trim()) {
+      alert('Preencha os critérios de aceite da entrega.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.orgao_responsavel_setor_id) {
+      alert('Selecione o órgão responsável pela entrega.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (!editForm.responsavel_entrega_id) {
+      alert('Selecione o responsável pela entrega.')
+      savingRef.current = false; setSaving(false); return
+    }
+    if (editForm.responsavel_entrega_id && editForm.orgao_responsavel_setor_id) {
+      const respUser = eligibleUsers.find(u => u.id === editForm.responsavel_entrega_id)
+      if (respUser && respUser.setor_id !== editForm.orgao_responsavel_setor_id) {
+        alert('O responsável pela entrega não pertence ao órgão responsável selecionado.')
+        savingRef.current = false; setSaving(false); return
+      }
+    }
 
     // Validate: participantes com papel preenchido
     const allParts = editForm.participantes || []
     for (const p of allParts) {
       if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
         alert('Preencha o papel de todos os participantes.')
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
     }
     const validP = allParts.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
     const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
     if (new Set(pKeys).size !== pKeys.length) {
       alert('Há participantes duplicados nesta entrega. Use o campo "papel" para múltiplos papéis do mesmo setor.')
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     // R5: Validate quinzena against projeto.data_inicio
     if (editForm.data_final_prevista && projeto.data_inicio && editForm.data_final_prevista < projeto.data_inicio) {
       alert(`A quinzena da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
+    }
+    if (editForm.data_inicio && projeto.data_inicio && editForm.data_inicio < projeto.data_inicio) {
+      alert(`A data de início da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
+      savingRef.current = false; setSaving(false); return
     }
 
     // Validate: if quinzena changed, check atividades dates
@@ -473,7 +677,17 @@ export default function ProjetoDetalhePage() {
       if (ativPosterior.length > 0) {
         const nomes = ativPosterior.map((a: any) => `"${a.nome}"`).join(', ')
         alert(`Não é possível definir esta quinzena. As atividades ${nomes} têm datas posteriores. Ajuste-as primeiro.`)
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
+      }
+    }
+
+    // Validate: if data_inicio changed, check atividades dates
+    if (editForm.data_inicio && entrega?.atividades) {
+      const ativAnterior = entrega.atividades.filter((a: any) => a.data_prevista && a.data_prevista < editForm.data_inicio)
+      if (ativAnterior.length > 0) {
+        const nomes = ativAnterior.map((a: any) => `"${a.nome}"`).join(', ')
+        alert(`Não é possível definir esta data de início. As atividades ${nomes} têm datas anteriores. Ajuste-as primeiro.`)
+        savingRef.current = false; setSaving(false); return
       }
     }
 
@@ -486,13 +700,13 @@ export default function ProjetoDetalhePage() {
             if (!newSetorIds.has(ap.setor_id)) {
               const label = ap.user?.nome || 'Usuário'
               alert(`Não é possível remover o setor desta entrega. O participante "${label}" da atividade "${ativ.nome}" pertence a este setor. Remova-o da atividade primeiro.`)
-              setSaving(false); return
+              savingRef.current = false; setSaving(false); return
             }
           } else if (ap.tipo_participante === 'setor') {
             if (!newSetorIds.has(ap.setor_id)) {
               const label = ap.setor?.codigo || 'Setor'
               alert(`Não é possível remover "${label}" desta entrega. Está incluído na atividade "${ativ.nome}". Remova-o da atividade primeiro.`)
-              setSaving(false); return
+              savingRef.current = false; setSaving(false); return
             }
           }
         }
@@ -507,7 +721,7 @@ export default function ProjetoDetalhePage() {
       if (pendentes.length > 0) {
         const nomes = pendentes.map((a: any) => `"${a.nome}"`).join(', ')
         alert(`Não é possível marcar esta entrega como resolvida. As seguintes atividades ainda não foram concluídas: ${nomes}. Resolva ou cancele essas atividades antes.`)
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
     }
 
@@ -516,7 +730,7 @@ export default function ProjetoDetalhePage() {
     if (ePerms.needsApproval) {
       if (hasPendingSolicitacao('entrega', entregaId)) {
         alert('Já existe uma solicitação pendente para esta entrega. Aguarde a avaliação.')
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
       const dados = {
         nome: editForm.nome, descricao: editForm.descricao,
@@ -534,7 +748,7 @@ export default function ProjetoDetalhePage() {
       }
       const ok = await criarSolicitacao('entrega', entregaId, entrega?.nome || '', 'edicao', dados)
       if (ok) { setEditingEntrega(null); loadAll() }
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     const novosDadosE = {
@@ -557,30 +771,72 @@ export default function ProjetoDetalhePage() {
       responsavel_entrega_id: entrega?.responsavel_entrega_id,
     }
     const { error } = await supabase.from('entregas').update(novosDadosE).eq('id', entregaId)
-    if (error) { alert(error.message); setSaving(false); return }
+    if (error) { alert(error.message); savingRef.current = false; setSaving(false); return }
+
+    // Auto-incluir órgão responsável como participante se não estiver na lista
+    if (novosDadosE.orgao_responsavel_setor_id && !validP.some((p: any) => p.tipo_participante === 'setor' && p.setor_id === novosDadosE.orgao_responsavel_setor_id)) {
+      validP.push({ setor_id: novosDadosE.orgao_responsavel_setor_id, tipo_participante: 'setor', papel: 'Órgão responsável' })
+    }
 
     const { error: delPErr } = await supabase.from('entrega_participantes').delete().eq('entrega_id', entregaId)
-    if (delPErr) { alert(`Erro ao atualizar participantes: ${delPErr.message}`); setSaving(false); return }
+    if (delPErr) { alert(`Erro ao atualizar participantes: ${delPErr.message}`); savingRef.current = false; setSaving(false); return }
     if (validP.length > 0) {
       const { error: insPErr } = await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
         entrega_id: entregaId,
         setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
-      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); setSaving(false); return }
+      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); savingRef.current = false; setSaving(false); return }
     }
 
     await auditLog('update', 'entrega', entregaId, anteriorE, novosDadosE)
 
-    // Alerta para o responsável pela entrega (se diferente do usuário atual)
-    if (profile!.id !== entrega.responsavel_entrega_id && entrega.responsavel_entrega_id) {
-      await supabase.from('alertas').insert({
-        destinatario_id: entrega.responsavel_entrega_id,
+    // Collect all alerts for entrega edit
+    const alertasEntrega: any[] = []
+    const alertaBase = {
+      entidade: 'entrega' as const, entidade_id: entrega.id, entidade_nome: entrega.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome,
+      autor_id: profile!.id, autor_nome: profile!.nome,
+    }
+    const entregaRecipients = new Set<string>()
+
+    // Responsável pela entrega
+    if (entrega.responsavel_entrega_id && entrega.responsavel_entrega_id !== profile!.id) {
+      entregaRecipients.add(entrega.responsavel_entrega_id)
+    }
+    // Project leader
+    if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+      entregaRecipients.add(projeto.responsavel_id)
+    }
+    // All atividade responsaveis of this entrega
+    for (const ativ of (entrega.atividades || [])) {
+      if (ativ.responsavel_atividade_id && ativ.responsavel_atividade_id !== profile!.id) {
+        entregaRecipients.add(ativ.responsavel_atividade_id)
+      }
+      // All atividade participants of this entrega
+      for (const ap of (ativ.atividade_participantes || [])) {
+        if (ap.user_id && ap.user_id !== profile!.id) {
+          entregaRecipients.add(ap.user_id)
+        }
+      }
+    }
+
+    for (const rid of Array.from(entregaRecipients)) {
+      alertasEntrega.push({
+        destinatario_id: rid,
         tipo: 'edicao_entrega',
-        entidade: 'entrega', entidade_id: entrega.id, entidade_nome: entrega.nome,
-        projeto_id: projeto.id, projeto_nome: projeto.nome,
-        autor_id: profile!.id, autor_nome: profile!.nome,
+        ...alertaBase,
         descricao: `Entrega "${entrega.nome}" foi editada por ${profile!.nome}`
+      })
+    }
+
+    // If responsavel changed, send nomeacao_responsavel_entrega to new one
+    if (editForm.responsavel_entrega_id && editForm.responsavel_entrega_id !== entrega.responsavel_entrega_id && editForm.responsavel_entrega_id !== profile!.id) {
+      alertasEntrega.push({
+        destinatario_id: editForm.responsavel_entrega_id,
+        tipo: 'nomeacao_responsavel_entrega',
+        ...alertaBase,
+        descricao: `Nomeação como responsável da entrega ${entrega.nome}`
       })
     }
 
@@ -601,19 +857,25 @@ export default function ProjetoDetalhePage() {
         .filter((g: any) => g.id !== profile!.id)
       const uniqueGestorIds = Array.from(new Set(allGestores.map((g: any) => g.id)))
 
-      if (uniqueGestorIds.length > 0) {
-        await supabase.from('alertas').insert(uniqueGestorIds.map(gId => ({
+      for (const gId of uniqueGestorIds) {
+        alertasEntrega.push({
           destinatario_id: gId,
           tipo: 'alteracao_setor_entrega',
-          entidade: 'entrega', entidade_id: entrega.id, entidade_nome: entrega.nome,
-          projeto_id: projeto.id, projeto_nome: projeto.nome,
-          autor_id: profile!.id, autor_nome: profile!.nome,
+          ...alertaBase,
           descricao: descAlerta
-        })))
+        })
       }
     }
 
-    setEditingEntrega(null); setSaving(false); loadAll()
+    appendMasterAlerts(alertasEntrega, {
+      tipo: 'edicao_entrega', entidade: 'entrega', entidade_id: entrega.id, entidade_nome: entrega.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Edição de entrega "${entrega.nome}" no projeto ${projeto.nome}`
+    })
+    if (alertasEntrega.length > 0) {
+      await supabase.from('alertas').insert(alertasEntrega)
+    }
+
+    setEditingEntrega(null); savingRef.current = false; setSaving(false); loadAll()
   }
 
   async function deleteEntrega(e: any) {
@@ -651,16 +913,42 @@ export default function ProjetoDetalhePage() {
     }
     await auditLog('delete', 'entrega', e.id, entregaSnapshot, null)
 
-    // Alerta para o responsável pela entrega (se diferente do usuário atual)
-    if (profile!.id !== e.responsavel_entrega_id && e.responsavel_entrega_id) {
-      await supabase.from('alertas').insert({
-        destinatario_id: e.responsavel_entrega_id,
+    // Alertas para todos os envolvidos na entrega
+    const alertasDelEntrega: any[] = []
+    const delEntregaBase = {
+      entidade: 'entrega' as const, entidade_id: e.id, entidade_nome: e.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome,
+      autor_id: profile!.id, autor_nome: profile!.nome,
+    }
+    const delEntregaRecipients = new Set<string>()
+    if (e.responsavel_entrega_id && e.responsavel_entrega_id !== profile!.id) {
+      delEntregaRecipients.add(e.responsavel_entrega_id)
+    }
+    if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+      delEntregaRecipients.add(projeto.responsavel_id)
+    }
+    for (const ativ of (e.atividades || [])) {
+      if (ativ.responsavel_atividade_id && ativ.responsavel_atividade_id !== profile!.id) {
+        delEntregaRecipients.add(ativ.responsavel_atividade_id)
+      }
+      for (const ap of (ativ.atividade_participantes || [])) {
+        if (ap.user_id && ap.user_id !== profile!.id) delEntregaRecipients.add(ap.user_id)
+      }
+    }
+    for (const rid of Array.from(delEntregaRecipients)) {
+      alertasDelEntrega.push({
+        destinatario_id: rid,
         tipo: 'exclusao_entrega',
-        entidade: 'entrega', entidade_id: e.id, entidade_nome: e.nome,
-        projeto_id: projeto.id, projeto_nome: projeto.nome,
-        autor_id: profile!.id, autor_nome: profile!.nome,
+        ...delEntregaBase,
         descricao: `Entrega "${e.nome}" foi excluída por ${profile!.nome}`
       })
+    }
+    appendMasterAlerts(alertasDelEntrega, {
+      tipo: 'exclusao_entrega', entidade: 'entrega', entidade_id: e.id, entidade_nome: e.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Entrega "${e.nome}" foi excluída por ${profile!.nome}`
+    })
+    if (alertasDelEntrega.length > 0) {
+      await supabase.from('alertas').insert(alertasDelEntrega)
     }
 
     await supabase.from('entregas').delete().eq('id', e.id)
@@ -683,26 +971,50 @@ export default function ProjetoDetalhePage() {
   }
 
   async function saveNewEntrega() {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
-    if (!newEntregaForm.nome?.trim()) { alert('Preencha o nome da entrega.'); setSaving(false); return }
+
+    // Validação de setor para gestores
+    if (!isAdminOrMaster) {
+      if (newEntregaForm.orgao_responsavel_setor_id && newEntregaForm.orgao_responsavel_setor_id !== profile?.setor_id) {
+        alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+        savingRef.current = false; setSaving(false); return
+      }
+      const partSetores = (newEntregaForm.participantes || []).filter((p: any) => p.papel?.trim() && p.tipo_participante === 'setor')
+      if (partSetores.some((p: any) => p.setor_id !== profile?.setor_id)) {
+        alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+        savingRef.current = false; setSaving(false); return
+      }
+    }
+
+    if (!newEntregaForm.nome?.trim()) { alert('Preencha o nome da entrega.'); savingRef.current = false; setSaving(false); return }
+    if (!newEntregaForm.descricao?.trim()) { alert('Preencha a descrição da entrega.'); savingRef.current = false; setSaving(false); return }
+    if (!newEntregaForm.criterios_aceite?.trim()) { alert('Preencha os critérios de aceite da entrega.'); savingRef.current = false; setSaving(false); return }
+    if (!newEntregaForm.orgao_responsavel_setor_id) { alert('Selecione o órgão responsável pela entrega.'); savingRef.current = false; setSaving(false); return }
+    if (!newEntregaForm.responsavel_entrega_id) { alert('Selecione o responsável pela entrega.'); savingRef.current = false; setSaving(false); return }
 
     // Validate participantes
     const allParts = newEntregaForm.participantes || []
     for (const p of allParts) {
       if ((p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
-        alert('Preencha o papel de todos os participantes.'); setSaving(false); return
+        alert('Preencha o papel de todos os participantes.'); savingRef.current = false; setSaving(false); return
       }
     }
     const validP = allParts.filter((p: any) => p.papel?.trim() && (p.setor_id || p.tipo_participante !== 'setor'))
     const pKeys = validP.map((p: any) => p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante)
     if (new Set(pKeys).size !== pKeys.length) {
-      alert('Há participantes duplicados nesta entrega.'); setSaving(false); return
+      alert('Há participantes duplicados nesta entrega.'); savingRef.current = false; setSaving(false); return
     }
 
     // R5: Validate quinzena against projeto.data_inicio
     if (newEntregaForm.data_final_prevista && projeto.data_inicio && newEntregaForm.data_final_prevista < projeto.data_inicio) {
       alert(`A quinzena da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
+    }
+    if (newEntregaForm.data_inicio && projeto.data_inicio && newEntregaForm.data_inicio < projeto.data_inicio) {
+      alert(`A data de início da entrega não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
+      savingRef.current = false; setSaving(false); return
     }
 
     const { data, error } = await supabase.from('entregas').insert({
@@ -718,7 +1030,12 @@ export default function ProjetoDetalhePage() {
       orgao_responsavel_setor_id: newEntregaForm.orgao_responsavel_setor_id || null,
       responsavel_entrega_id: newEntregaForm.responsavel_entrega_id || null,
     }).select().single()
-    if (error) { alert(error.message); setSaving(false); return }
+    if (error) { alert(error.message); savingRef.current = false; setSaving(false); return }
+
+    // Auto-incluir órgão responsável como participante se não estiver na lista
+    if (newEntregaForm.orgao_responsavel_setor_id && !validP.some((p: any) => p.tipo_participante === 'setor' && p.setor_id === newEntregaForm.orgao_responsavel_setor_id)) {
+      validP.push({ setor_id: newEntregaForm.orgao_responsavel_setor_id, tipo_participante: 'setor', papel: 'Órgão responsável' })
+    }
 
     if (validP.length > 0) {
       const { error: insPErr } = await supabase.from('entrega_participantes').insert(validP.map((p: any) => ({
@@ -726,12 +1043,46 @@ export default function ProjetoDetalhePage() {
         setor_id: p.tipo_participante === 'setor' ? p.setor_id : null,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
-      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); setSaving(false); return }
+      if (insPErr) { alert(`Erro ao salvar participantes: ${insPErr.message}`); savingRef.current = false; setSaving(false); return }
     }
 
     await auditLog('create', 'entrega', data.id, null, { nome: newEntregaForm.nome, projeto_id: projeto.id })
+
+    // Alerts for new entrega
+    const alertasNewEntrega: any[] = []
+    const newEntregaBase = {
+      entidade: 'entrega' as const, entidade_id: data.id, entidade_nome: newEntregaForm.nome.trim(),
+      projeto_id: projeto.id, projeto_nome: projeto.nome,
+      autor_id: profile!.id, autor_nome: profile!.nome,
+    }
+    // criacao_entrega to project leader
+    if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+      alertasNewEntrega.push({
+        destinatario_id: projeto.responsavel_id,
+        tipo: 'criacao_entrega',
+        ...newEntregaBase,
+        descricao: `Nova entrega "${newEntregaForm.nome.trim()}" criada por ${profile!.nome}`
+      })
+    }
+    // nomeacao_responsavel_entrega to responsavel
+    if (newEntregaForm.responsavel_entrega_id && newEntregaForm.responsavel_entrega_id !== profile!.id && newEntregaForm.responsavel_entrega_id !== projeto.responsavel_id) {
+      alertasNewEntrega.push({
+        destinatario_id: newEntregaForm.responsavel_entrega_id,
+        tipo: 'nomeacao_responsavel_entrega',
+        ...newEntregaBase,
+        descricao: `Nomeação como responsável da entrega ${newEntregaForm.nome.trim()}`
+      })
+    }
+    appendMasterAlerts(alertasNewEntrega, {
+      tipo: 'criacao_entrega', entidade: 'entrega', entidade_id: data.id, entidade_nome: newEntregaForm.nome.trim(),
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Nova entrega "${newEntregaForm.nome.trim()}" criada por ${profile!.nome}`
+    })
+    if (alertasNewEntrega.length > 0) {
+      await supabase.from('alertas').insert(alertasNewEntrega)
+    }
+
     setShowNewEntregaForm(false)
-    setSaving(false)
+    savingRef.current = false; setSaving(false)
     loadAll()
   }
 
@@ -747,6 +1098,7 @@ export default function ProjetoDetalhePage() {
       status: a.status || 'aberta', motivo_status: a.motivo_status || '',
       responsavel_atividade_id: a.responsavel_atividade_id || '',
       entrega_data_final: entrega.data_final_prevista || '',
+      entrega_data_inicio: entrega.data_inicio || '',
       entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
         id: p.id, user_id: p.user_id || null, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
@@ -756,23 +1108,43 @@ export default function ProjetoDetalhePage() {
   }
 
   async function saveEditAtividade(ativId: number, entregaId: number) {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     const isNew = editForm._isNew
 
+    // Validação de setor para gestores
+    if (!isAdminOrMaster) {
+      if (editForm.responsavel_atividade_id) {
+        const resp = eligibleUsers.find(u => u.id === editForm.responsavel_atividade_id)
+        if (resp && resp.setor_id !== profile?.setor_id) {
+          alert('Gestores só podem designar membros do próprio setor. Para designar outros setores ou pessoas, entre em contato com o Gabinete de Projetos.')
+          savingRef.current = false; setSaving(false); return
+        }
+      }
+    }
+
     // Validações básicas
-    if (!editForm.nome?.trim()) { alert('Preencha o nome da atividade.'); setSaving(false); return }
-    if (!editForm.descricao?.trim()) { alert('Preencha a descrição da atividade.'); setSaving(false); return }
+    if (!editForm.nome?.trim()) { alert('Preencha o nome da atividade.'); savingRef.current = false; setSaving(false); return }
+    if (!editForm.descricao?.trim()) { alert('Preencha a descrição da atividade.'); savingRef.current = false; setSaving(false); return }
+    if (!editForm.responsavel_atividade_id) { alert('Selecione o responsável pela atividade.'); savingRef.current = false; setSaving(false); return }
 
     // Validate date <= entrega quinzena
     if (editForm.data_prevista && editForm.entrega_data_final && editForm.data_prevista > editForm.entrega_data_final) {
       alert(`A data da atividade não pode ser posterior à quinzena da entrega (${editForm.entrega_data_final}).`)
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
+    }
+
+    // Validate data_prevista >= entrega.data_inicio
+    if (editForm.data_prevista && editForm.entrega_data_inicio && editForm.data_prevista < editForm.entrega_data_inicio) {
+      alert(`A data da atividade não pode ser anterior à data de início da entrega (${formatDateBR(editForm.entrega_data_inicio)}).`)
+      savingRef.current = false; setSaving(false); return
     }
 
     // R5: Validate data_prevista against projeto.data_inicio
     if (editForm.data_prevista && projeto.data_inicio && editForm.data_prevista < projeto.data_inicio) {
       alert(`A data da atividade não pode ser anterior à data de início do projeto (${formatDateBR(projeto.data_inicio)}).`)
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     // Validate: participantes com papel preenchido
@@ -780,7 +1152,7 @@ export default function ProjetoDetalhePage() {
     for (const p of allP) {
       if ((p.user_id || p.setor_id || p.tipo_participante !== 'setor') && !p.papel?.trim()) {
         alert('Preencha o papel de todos os participantes.')
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
     }
     const validP = allP.filter((p: any) => p.papel?.trim() && (p.user_id || p.setor_id || p.tipo_participante !== 'setor'))
@@ -792,7 +1164,7 @@ export default function ProjetoDetalhePage() {
         const u = eligibleUsers.find((u: any) => u.id === ap.user_id)
         if (u?.setor_id && !entregaSetorIds.has(u.setor_id)) {
           alert(`O participante "${u.nome}" pertence a um setor que não está na entrega. Remova-o ou adicione o setor à entrega primeiro.`)
-          setSaving(false); return
+          savingRef.current = false; setSaving(false); return
         }
       }
     }
@@ -801,7 +1173,7 @@ export default function ProjetoDetalhePage() {
     const pKeys = validP.map((p: any) => p.tipo_participante === 'usuario' ? `u_${p.user_id}` : (p.tipo_participante === 'setor' ? `s_${p.setor_id}` : p.tipo_participante))
     if (new Set(pKeys).size !== pKeys.length) {
       alert('Há participantes duplicados nesta atividade.')
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     const entregaForAtiv = projeto.entregas?.find((en: any) => en.id === entregaId)
@@ -810,7 +1182,7 @@ export default function ProjetoDetalhePage() {
     if (ePermsAtiv.needsApproval && !isNew) {
       if (hasPendingSolicitacao('atividade', ativId)) {
         alert('Já existe uma solicitação pendente para esta atividade. Aguarde a avaliação.')
-        setSaving(false); return
+        savingRef.current = false; setSaving(false); return
       }
       const ativ = projeto.entregas?.flatMap((e: any) => e.atividades || []).find((a: any) => a.id === ativId)
       const dados = {
@@ -826,7 +1198,7 @@ export default function ProjetoDetalhePage() {
       }
       const ok = await criarSolicitacao('atividade', ativId, ativ?.nome || editForm.nome, 'edicao', dados)
       if (ok) { setEditingAtividade(null); loadAll() }
-      setSaving(false); return
+      savingRef.current = false; setSaving(false); return
     }
 
     const novosDadosA = {
@@ -842,7 +1214,7 @@ export default function ProjetoDetalhePage() {
       const { data: newAtiv, error } = await supabase.from('atividades').insert({
         entrega_id: entregaId, ...novosDadosA
       }).select().single()
-      if (error) { alert(error.message); setSaving(false); return }
+      if (error) { alert(error.message); savingRef.current = false; setSaving(false); return }
       realAtivId = newAtiv.id
       await auditLog('create', 'atividade', realAtivId, null, novosDadosA)
     } else {
@@ -852,13 +1224,13 @@ export default function ProjetoDetalhePage() {
         data_prevista: ativAtual?.data_prevista, status: ativAtual?.status, motivo_status: ativAtual?.motivo_status,
       }
       const { error } = await supabase.from('atividades').update(novosDadosA).eq('id', ativId)
-      if (error) { alert(error.message); setSaving(false); return }
+      if (error) { alert(error.message); savingRef.current = false; setSaving(false); return }
       await auditLog('update', 'atividade', ativId, anteriorA, novosDadosA)
     }
 
     if (!isNew) {
       const { error: delAPErr } = await supabase.from('atividade_participantes').delete().eq('atividade_id', realAtivId)
-      if (delAPErr) { alert(`Erro ao atualizar participantes: ${delAPErr.message}`); setSaving(false); return }
+      if (delAPErr) { alert(`Erro ao atualizar participantes: ${delAPErr.message}`); savingRef.current = false; setSaving(false); return }
     }
     if (validP.length > 0) {
       const { error: insAPErr } = await supabase.from('atividade_participantes').insert(validP.map((p: any) => ({
@@ -867,7 +1239,7 @@ export default function ProjetoDetalhePage() {
         setor_id: p.setor_id,
         tipo_participante: p.tipo_participante, papel: p.papel.trim()
       })))
-      if (insAPErr) { alert(`Erro ao salvar participantes: ${insAPErr.message}`); setSaving(false); return }
+      if (insAPErr) { alert(`Erro ao salvar participantes: ${insAPErr.message}`); savingRef.current = false; setSaving(false); return }
     }
 
     // Regras de coerência de status entrega ↔ atividades (somente para saves diretos, não para solicitações)
@@ -921,34 +1293,118 @@ export default function ProjetoDetalhePage() {
       }
     }
 
-    // Alertas para responsáveis (se diferente do usuário atual)
-    if (!isNew && entregaForAtiv) {
-      const ativAtual = entregaForAtiv.atividades?.find((at: any) => at.id === realAtivId)
-      // Alerta para o responsável pela atividade
-      if (ativAtual?.responsavel_atividade_id && profile!.id !== ativAtual.responsavel_atividade_id) {
-        await supabase.from('alertas').insert({
-          destinatario_id: ativAtual.responsavel_atividade_id,
-          tipo: 'edicao_atividade',
-          entidade: 'atividade', entidade_id: realAtivId, entidade_nome: editForm.nome,
-          projeto_id: projeto.id, projeto_nome: projeto.nome,
-          autor_id: profile!.id, autor_nome: profile!.nome,
-          descricao: `Atividade "${editForm.nome}" foi editada por ${profile!.nome}`
+    // Alertas for atividade creation/edit
+    const alertasAtiv: any[] = []
+    const ativAlertBase = {
+      entidade: 'atividade' as const, entidade_id: realAtivId, entidade_nome: editForm.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome,
+      autor_id: profile!.id, autor_nome: profile!.nome,
+    }
+    const tipoAlerta = isNew ? 'criacao_atividade' : 'edicao_atividade'
+    const descAlerta = isNew
+      ? `Nova atividade "${editForm.nome}" criada por ${profile!.nome}`
+      : `Atividade "${editForm.nome}" foi editada por ${profile!.nome}`
+
+    // Collect all recipients
+    const ativRecipients = new Set<string>()
+
+    if (entregaForAtiv) {
+      const ativAtual = isNew ? null : entregaForAtiv.atividades?.find((at: any) => at.id === realAtivId)
+
+      // Project leader
+      if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) {
+        ativRecipients.add(projeto.responsavel_id)
+      }
+      // Entrega responsavel
+      if (entregaForAtiv.responsavel_entrega_id && entregaForAtiv.responsavel_entrega_id !== profile!.id) {
+        ativRecipients.add(entregaForAtiv.responsavel_entrega_id)
+      }
+      // Atividade responsavel (current)
+      if (!isNew && ativAtual?.responsavel_atividade_id && ativAtual.responsavel_atividade_id !== profile!.id) {
+        ativRecipients.add(ativAtual.responsavel_atividade_id)
+      }
+      // All atividade participants
+      for (const p of validP) {
+        if (p.tipo_participante === 'usuario' && p.user_id && p.user_id !== profile!.id) {
+          ativRecipients.add(p.user_id)
+        }
+      }
+      // Also existing participants (for edit case)
+      if (!isNew && ativAtual?.atividade_participantes) {
+        for (const ap of ativAtual.atividade_participantes) {
+          if (ap.user_id && ap.user_id !== profile!.id) {
+            ativRecipients.add(ap.user_id)
+          }
+        }
+      }
+
+      for (const rid of Array.from(ativRecipients)) {
+        alertasAtiv.push({
+          destinatario_id: rid,
+          tipo: tipoAlerta,
+          ...ativAlertBase,
+          descricao: descAlerta
         })
       }
-      // Alerta para o responsável pela entrega (se diferente do atual e do resp. atividade)
-      if (entregaForAtiv.responsavel_entrega_id && profile!.id !== entregaForAtiv.responsavel_entrega_id && entregaForAtiv.responsavel_entrega_id !== ativAtual?.responsavel_atividade_id) {
-        await supabase.from('alertas').insert({
-          destinatario_id: entregaForAtiv.responsavel_entrega_id,
-          tipo: 'edicao_atividade',
-          entidade: 'atividade', entidade_id: realAtivId, entidade_nome: editForm.nome,
-          projeto_id: projeto.id, projeto_nome: projeto.nome,
-          autor_id: profile!.id, autor_nome: profile!.nome,
-          descricao: `Atividade "${editForm.nome}" da entrega "${entregaForAtiv.nome}" foi editada por ${profile!.nome}`
+
+      // If responsavel changed, send nomeacao_responsavel_atividade to new one
+      if (!isNew && editForm.responsavel_atividade_id && editForm.responsavel_atividade_id !== ativAtual?.responsavel_atividade_id && editForm.responsavel_atividade_id !== profile!.id) {
+        // Only add if not already in recipients (avoid duplicate)
+        alertasAtiv.push({
+          destinatario_id: editForm.responsavel_atividade_id,
+          tipo: 'nomeacao_responsavel_atividade',
+          ...ativAlertBase,
+          descricao: `Nomeação como responsável pela atividade ${editForm.nome}`
         })
+      }
+
+      // If new participants added, send nomeacao_participante
+      if (!isNew && ativAtual?.atividade_participantes) {
+        const oldUserIds = new Set((ativAtual.atividade_participantes || []).filter((ap: any) => ap.user_id).map((ap: any) => ap.user_id))
+        for (const p of validP) {
+          if (p.tipo_participante === 'usuario' && p.user_id && !oldUserIds.has(p.user_id) && p.user_id !== profile!.id) {
+            alertasAtiv.push({
+              destinatario_id: p.user_id,
+              tipo: 'nomeacao_participante',
+              ...ativAlertBase,
+              descricao: `Inserção como participante da atividade ${editForm.nome}`
+            })
+          }
+        }
+      }
+
+      // For new activities, send nomeacao alerts
+      if (isNew) {
+        if (editForm.responsavel_atividade_id && editForm.responsavel_atividade_id !== profile!.id) {
+          alertasAtiv.push({
+            destinatario_id: editForm.responsavel_atividade_id,
+            tipo: 'nomeacao_responsavel_atividade',
+            ...ativAlertBase,
+            descricao: `Nomeação como responsável pela atividade ${editForm.nome}`
+          })
+        }
+        for (const p of validP) {
+          if (p.tipo_participante === 'usuario' && p.user_id && p.user_id !== profile!.id) {
+            alertasAtiv.push({
+              destinatario_id: p.user_id,
+              tipo: 'nomeacao_participante',
+              ...ativAlertBase,
+              descricao: `Inserção como participante da atividade ${editForm.nome}`
+            })
+          }
+        }
       }
     }
 
-    setEditingAtividade(null); setSaving(false); loadAll()
+    appendMasterAlerts(alertasAtiv, {
+      tipo: isNew ? 'criacao_atividade' : 'edicao_atividade', entidade: 'atividade', entidade_id: editForm.id || 0, entidade_nome: editForm.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `${isNew ? 'Nova atividade' : 'Edição de atividade'} "${editForm.nome}" no projeto ${projeto.nome}`
+    })
+    if (alertasAtiv.length > 0) {
+      await supabase.from('alertas').insert(alertasAtiv)
+    }
+
+    setEditingAtividade(null); savingRef.current = false; setSaving(false); loadAll()
   }
 
   async function deleteAtividade(a: any, entregaParent?: any) {
@@ -967,27 +1423,29 @@ export default function ProjetoDetalhePage() {
     if (!confirm(`Excluir a atividade "${a.nome}"?`)) return
     await auditLog('delete', 'atividade', a.id, { nome: a.nome }, null)
 
-    // Alertas para responsáveis
-    if (a.responsavel_atividade_id && profile!.id !== a.responsavel_atividade_id) {
-      await supabase.from('alertas').insert({
-        destinatario_id: a.responsavel_atividade_id,
-        tipo: 'exclusao_atividade',
+    // Alertas para todos os envolvidos
+    const alertasDelAtiv: any[] = []
+    const delAtivRecipients = new Set<string>()
+    if (a.responsavel_atividade_id && a.responsavel_atividade_id !== profile!.id) delAtivRecipients.add(a.responsavel_atividade_id)
+    if (entregaDel?.responsavel_entrega_id && entregaDel.responsavel_entrega_id !== profile!.id) delAtivRecipients.add(entregaDel.responsavel_entrega_id)
+    if (projeto.responsavel_id && projeto.responsavel_id !== profile!.id) delAtivRecipients.add(projeto.responsavel_id)
+    for (const ap of (a.atividade_participantes || [])) {
+      if (ap.user_id && ap.user_id !== profile!.id) delAtivRecipients.add(ap.user_id)
+    }
+    for (const rid of Array.from(delAtivRecipients)) {
+      alertasDelAtiv.push({
+        destinatario_id: rid, tipo: 'exclusao_atividade',
         entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
         projeto_id: projeto.id, projeto_nome: projeto.nome,
         autor_id: profile!.id, autor_nome: profile!.nome,
         descricao: `Atividade "${a.nome}" foi excluída por ${profile!.nome}`
       })
     }
-    if (entregaDel?.responsavel_entrega_id && profile!.id !== entregaDel.responsavel_entrega_id && entregaDel.responsavel_entrega_id !== a.responsavel_atividade_id) {
-      await supabase.from('alertas').insert({
-        destinatario_id: entregaDel.responsavel_entrega_id,
-        tipo: 'exclusao_atividade',
-        entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
-        projeto_id: projeto.id, projeto_nome: projeto.nome,
-        autor_id: profile!.id, autor_nome: profile!.nome,
-        descricao: `Atividade "${a.nome}" da entrega "${entregaDel.nome}" foi excluída por ${profile!.nome}`
-      })
-    }
+    appendMasterAlerts(alertasDelAtiv, {
+      tipo: 'exclusao_atividade', entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
+      projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Atividade "${a.nome}" foi excluída por ${profile!.nome}`
+    })
+    if (alertasDelAtiv.length > 0) await supabase.from('alertas').insert(alertasDelAtiv)
 
     await supabase.from('atividades').delete().eq('id', a.id)
     loadAll()
@@ -1005,6 +1463,7 @@ export default function ProjetoDetalhePage() {
       status: 'aberta', motivo_status: '',
       responsavel_atividade_id: '',
       entrega_data_final: entrega?.data_final_prevista || '',
+      entrega_data_inicio: entrega?.data_inicio || '',
       entrega_participantes: entrega?.entrega_participantes || [],
       participantes: [],
       _isNew: true, _entregaId: entregaId
@@ -1054,7 +1513,7 @@ export default function ProjetoDetalhePage() {
           }} className="input-field text-xs flex-1">
           <option value="">Participante...</option>
           <optgroup label="Setores">
-            {setores.map((s: any) => <option key={s.id} value={s.id} disabled={usedKeys.has(`s_${s.id}`)}>{s.codigo}{usedKeys.has(`s_${s.id}`) ? ' (já)' : ''}</option>)}
+            {setoresDisponiveis.map((s: any) => <option key={s.id} value={s.id} disabled={usedKeys.has(`s_${s.id}`)}>{s.codigo}{usedKeys.has(`s_${s.id}`) ? ' (já)' : ''}</option>)}
           </optgroup>
           <optgroup label="Externos">
             <option value="externo_subsegop" disabled={usedKeys.has('externo_subsegop')}>Ext. SUBSEGOP{usedKeys.has('externo_subsegop') ? ' (já)' : ''}</option>
@@ -1072,11 +1531,14 @@ export default function ProjetoDetalhePage() {
   function renderAtividadeParticipanteEditRow(p: any, idx: number, allParts: any[], entregaParts: any[], onChange: (i: number, f: string, v: any) => void, onRemove: (i: number) => void) {
     const usedUserIds = new Set(allParts.filter((_: any, i: number) => i !== idx).filter((ap: any) => ap.user_id).map((ap: any) => ap.user_id))
     const entregaSetorIds = new Set(entregaParts.filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
-    const filteredUsers = eligibleUsers.filter(u => {
+    const filteredUsers = (isAdminOrMaster ? eligibleUsers.filter(u => {
       if (usedUserIds.has(u.id)) return false
       if (entregaSetorIds.size === 0) return false
       return u.setor_id ? entregaSetorIds.has(u.setor_id) : false
-    })
+    }) : eligibleUsers.filter(u => {
+      if (usedUserIds.has(u.id)) return false
+      return u.setor_id === profile?.setor_id
+    }))
     const selectedUser = p.user_id ? eligibleUsers.find(u => u.id === p.user_id) : null
     return (
       <div key={idx} className="flex gap-2 items-start">
@@ -1155,7 +1617,7 @@ export default function ProjetoDetalhePage() {
                 {isAdminOrMaster && (
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Setor líder</label>
-                    <select value={editForm.setor_lider_id} onChange={e => setEditForm({ ...editForm, setor_lider_id: parseInt(e.target.value) })} 
+                    <select value={editForm.setor_lider_id} onChange={e => setEditForm({ ...editForm, setor_lider_id: parseInt(e.target.value), responsavel_id: null })}
                       className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm">
                       {setores.map((s: any) => <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>)}
                     </select>
@@ -1170,7 +1632,7 @@ export default function ProjetoDetalhePage() {
                   <UserAutocompleteSelect
                     value={editForm.responsavel_id}
                     onChange={val => setEditForm({...editForm, responsavel_id: val})}
-                    users={eligibleUsers}
+                    users={eligibleUsers.filter(u => u.role !== 'usuario' && u.setor_id === editForm.setor_lider_id)}
                     placeholder="Selecione o líder..."
                     required
                     disabled={!canEditProjeto}
@@ -1192,7 +1654,7 @@ export default function ProjetoDetalhePage() {
                     <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={4} placeholder="Qual problema concreto este projeto resolve?" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4} placeholder="Qual problema concreto este projeto resolve?" />
                 </div>
                 
                 <div>
@@ -1201,22 +1663,77 @@ export default function ProjetoDetalhePage() {
                     <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={4} placeholder="Descreva o que este projeto entregará" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4} placeholder="Descreva o que este projeto entregará" />
                 </div>
                 
                 <div className="md:col-span-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Indicador(es) de sucesso</label>
-                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Indicador(es) de sucesso</label>
+                      <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                    </div>
+                    <button type="button" onClick={() => setEditForm({ ...editForm, indicadores: [...(editForm.indicadores || []), { nome: '', formula: '', fonte_dados: '', periodicidade: '', unidade_medida: '', responsavel: '', meta: '' }] })}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+                      <Plus size={14} /> Indicador
+                    </button>
                   </div>
-                  <textarea value={editForm.indicador_sucesso || ''} onChange={e => setEditForm({ ...editForm, indicador_sucesso: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={3} placeholder="Sugestão de indicador de sucesso (opcional)" />
+                  {(!editForm.indicadores || editForm.indicadores.length === 0) && (
+                    <p className="text-xs text-gray-400 italic">Nenhum indicador adicionado. Clique em &quot;+ Indicador&quot; para adicionar.</p>
+                  )}
+                  <div className="space-y-3">
+                    {(editForm.indicadores || []).map((ind: any, idx: number) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 relative">
+                        <button type="button" onClick={() => setEditForm({ ...editForm, indicadores: editForm.indicadores.filter((_: any, i: number) => i !== idx) })}
+                          className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Remover indicador">
+                          <Trash2 size={16} />
+                        </button>
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Indicador {idx + 1}</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500 mb-0.5 block">Nome <span className="text-red-500">*</span></label>
+                            <input type="text" value={ind.nome || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, nome: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Identificação precisa do que está sendo medido" />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500 mb-0.5 block">Fórmula de Cálculo</label>
+                            <input type="text" value={ind.formula || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, formula: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Definição matemática exata de como o valor é obtido" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-0.5 block">Fonte de Dados</label>
+                            <input type="text" value={ind.fonte_dados || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, fonte_dados: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="De onde virão as informações" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-0.5 block">Periodicidade/Frequência</label>
+                            <input type="text" value={ind.periodicidade || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, periodicidade: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Com que frequência será medido" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-0.5 block">Unidade de Medida</label>
+                            <input type="text" value={ind.unidade_medida || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, unidade_medida: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Porcentagem, valor monetário, tempo, quantidade absoluta" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-0.5 block">Responsável</label>
+                            <input type="text" value={ind.responsavel || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, responsavel: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Quem é o proprietário do indicador" />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500 mb-0.5 block">Meta</label>
+                            <input type="text" value={ind.meta || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, meta: e.target.value } : item) })}
+                              className="input-field text-sm" placeholder="Valor ou resultado esperado" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências com outros projetos</label>
                   <textarea value={editForm.dependencias_projetos || ''} onChange={e => setEditForm({ ...editForm, dependencias_projetos: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-none leading-relaxed" rows={2} placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2} placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
                 </div>
               </div>
 
@@ -1288,6 +1805,13 @@ export default function ProjetoDetalhePage() {
                   <button type="button" onClick={() => setHelpType('permissoes')} className="flex items-center gap-1.5 text-xs text-sedec-500 hover:text-sedec-700 bg-sedec-50 hover:bg-sedec-100 px-2.5 py-1.5 rounded-lg transition-colors font-medium border border-sedec-200" title="Regras de permissão">
                     <HelpCircle size={14} /> Permissões
                   </button>
+                  {isAdminOrMaster && (
+                    <button onClick={toggleHibernando}
+                      className={`flex items-center gap-1 text-sm px-2.5 py-1.5 rounded-lg transition-colors font-medium ${projeto.status === 'hibernando' ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                      title={projeto.status === 'hibernando' ? 'Reativar projeto' : 'Hibernar projeto'}>
+                      <Pause size={15} /> {projeto.status === 'hibernando' ? 'Reativar' : 'Hibernar'}
+                    </button>
+                  )}
                   {canEditProjeto && (
                     <>
                       <button onClick={startEditProjeto} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors font-medium" title="Editar"><Edit3 size={15} /> Editar</button>
@@ -1329,7 +1853,28 @@ export default function ProjetoDetalhePage() {
                 </div>
               </div>
 
-              {projeto.indicador_sucesso && (
+              {indicadores.length > 0 && (
+                <div className="mb-5 bg-green-50/50 rounded-xl p-4 border border-green-100 text-sm">
+                  <h3 className="font-bold text-green-800 flex items-center gap-1.5 mb-2">🎯 Indicador(es) de sucesso</h3>
+                  <div className="space-y-3">
+                    {indicadores.map((ind: any, idx: number) => (
+                      <div key={ind.id || idx} className="bg-white/70 rounded-lg p-3 border border-green-100">
+                        {ind.nome && <div className="font-semibold text-gray-800 mb-1">{ind.nome}</div>}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                          {ind.formula && <div><span className="text-gray-500 text-xs">Fórmula:</span> <span className="text-gray-700">{ind.formula}</span></div>}
+                          {ind.fonte_dados && <div><span className="text-gray-500 text-xs">Fonte:</span> <span className="text-gray-700">{ind.fonte_dados}</span></div>}
+                          {ind.periodicidade && <div><span className="text-gray-500 text-xs">Periodicidade:</span> <span className="text-gray-700">{ind.periodicidade}</span></div>}
+                          {ind.unidade_medida && <div><span className="text-gray-500 text-xs">Unidade:</span> <span className="text-gray-700">{ind.unidade_medida}</span></div>}
+                          {ind.responsavel && <div><span className="text-gray-500 text-xs">Responsável:</span> <span className="text-gray-700">{ind.responsavel}</span></div>}
+                          {ind.meta && <div><span className="text-gray-500 text-xs">Meta:</span> <span className="text-gray-700">{ind.meta}</span></div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {projeto.indicador_sucesso && indicadores.length === 0 && (
                 <div className="mb-5 bg-green-50/50 rounded-xl p-4 border border-green-100 text-sm">
                   <h3 className="font-bold text-green-800 flex items-center gap-1.5 mb-1.5">🎯 Indicador(es) de sucesso</h3>
                   <ul className="space-y-1.5 mt-2">
@@ -1435,19 +1980,19 @@ export default function ProjetoDetalhePage() {
               <div>
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
                 <textarea value={newEntregaForm.descricao} onChange={ev => setNewEntregaForm({ ...newEntregaForm, descricao: ev.target.value })}
-                  className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+                  className="input-field text-sm resize-y" rows={2} placeholder="Descreva esta entrega" />
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
                 <textarea value={newEntregaForm.criterios_aceite || ''}
                   onChange={ev => setNewEntregaForm({ ...newEntregaForm, criterios_aceite: ev.target.value })}
-                  placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
+                  placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-y" rows={2} />
               </div>
 
               {/* Órgão responsável + Responsável */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável *</label>
                   <select
                     value={newEntregaForm.orgao_responsavel_setor_id || ''}
                     onChange={ev => {
@@ -1459,26 +2004,24 @@ export default function ProjetoDetalhePage() {
                     }}
                     className="input-field text-xs">
                     <option value="">Selecione...</option>
-                    {(newEntregaForm.participantes || [])
-                      .filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim())
-                      .map((p: any) => {
-                        const s = setores.find((ss: any) => ss.id === p.setor_id)
-                        return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
-                      })}
+                    {setoresDisponiveis.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>
+                    ))}
                   </select>
-                  {(newEntregaForm.participantes || []).filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim()).length === 0 && (
-                    <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
-                  )}
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega *</label>
+                  {!newEntregaForm.orgao_responsavel_setor_id ? (
+                    <p className="text-[10px] text-gray-400 mt-1 italic px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">Selecione o órgão responsável primeiro.</p>
+                  ) : (
                   <UserAutocompleteSelect
                     value={newEntregaForm.responsavel_entrega_id}
                     onChange={val => setNewEntregaForm({...newEntregaForm, responsavel_entrega_id: val})}
-                    users={eligibleUsers.filter(u => u.id === newEntregaForm.responsavel_entrega_id || (!newEntregaForm.orgao_responsavel_setor_id || u.setor_id === newEntregaForm.orgao_responsavel_setor_id))}
+                    users={eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === newEntregaForm.responsavel_entrega_id || u.setor_id === newEntregaForm.orgao_responsavel_setor_id))}
                     placeholder="Selecione o responsável..."
                     onRegisterNew={() => setShowGestorModal(['gestor'])}
                   />
+                  )}
                 </div>
               </div>
 
@@ -1533,7 +2076,7 @@ export default function ProjetoDetalhePage() {
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
                 <textarea value={newEntregaForm.dependencias_criticas}
                   onChange={ev => setNewEntregaForm({ ...newEntregaForm, dependencias_criticas: ev.target.value })}
-                  placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
+                  placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-y leading-relaxed" rows={3} />
                 <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
               </div>
               <div>
@@ -1608,6 +2151,7 @@ export default function ProjetoDetalhePage() {
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                    {e.data_inicio && <span>Início: {formatDateBR(e.data_inicio)}</span>}
                     {e.data_final_prevista && <span>Prazo: {formatQuinzena(e.data_final_prevista)}</span>}
                     <span>{e.atividades?.length || 0} atividade(s)</span>
                   </div>
@@ -1639,19 +2183,19 @@ export default function ProjetoDetalhePage() {
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Descrição</label>
                         <textarea value={editForm.descricao} onChange={ev => setEditForm({ ...editForm, descricao: ev.target.value })}
-                          disabled={!ePerms.canFull} className="input-field text-sm resize-none" rows={2} placeholder="Descreva esta entrega" />
+                          disabled={!ePerms.canFull} className="input-field text-sm resize-y" rows={2} placeholder="Descreva esta entrega" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Critérios de aceite</label>
                         <textarea value={editForm.criterios_aceite || ''}
                           onChange={ev => setEditForm({ ...editForm, criterios_aceite: ev.target.value })}
-                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-none" rows={2} />
+                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Minuta apresentada e aprovada pelo Superintendente" className="input-field text-xs resize-y" rows={2} />
                       </div>
 
                       {/* Órgão responsável + Responsável */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável</label>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Órgão responsável *</label>
                           <select
                             value={editForm.orgao_responsavel_setor_id || ''}
                             onChange={ev => {
@@ -1664,27 +2208,25 @@ export default function ProjetoDetalhePage() {
                             disabled={!(ePerms.canFull || ePerms.canEditLimited)}
                             className="input-field text-xs">
                             <option value="">Selecione...</option>
-                            {(editForm.participantes || [])
-                              .filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim())
-                              .map((p: any) => {
-                                const s = setores.find((ss: any) => ss.id === p.setor_id)
-                                return s ? <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option> : null
-                              })}
+                            {setoresDisponiveis.map((s: any) => (
+                              <option key={s.id} value={s.id}>{s.codigo} — {s.nome_completo}</option>
+                            ))}
                           </select>
-                          {(editForm.participantes || []).filter((p: any) => p.tipo_participante === 'setor' && p.setor_id && p.papel?.trim()).length === 0 && (
-                            <p className="text-[10px] text-gray-400 mt-1 italic">Adicione participantes tipo setor primeiro.</p>
-                          )}
                         </div>
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega</label>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Responsável pela entrega *</label>
+                          {!editForm.orgao_responsavel_setor_id ? (
+                            <p className="text-[10px] text-gray-400 mt-1 italic px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">Selecione o órgão responsável primeiro.</p>
+                          ) : (
                           <UserAutocompleteSelect
                             value={editForm.responsavel_entrega_id}
                             onChange={val => setEditForm({...editForm, responsavel_entrega_id: val})}
-                            users={eligibleUsers.filter(u => u.id === editForm.responsavel_entrega_id || (!editForm.orgao_responsavel_setor_id || u.setor_id === editForm.orgao_responsavel_setor_id))}
+                            users={eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === editForm.responsavel_entrega_id || u.setor_id === editForm.orgao_responsavel_setor_id))}
                             placeholder="Selecione o responsável..."
                             disabled={!(ePerms.canFull || ePerms.canEditLimited)}
                             onRegisterNew={() => setShowGestorModal(['gestor'])}
                           />
+                          )}
                         </div>
                       </div>
 
@@ -1748,7 +2290,7 @@ export default function ProjetoDetalhePage() {
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências críticas</label>
                         <textarea value={editForm.dependencias_criticas}
                           onChange={ev => setEditForm({ ...editForm, dependencias_criticas: ev.target.value })}
-                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-none leading-relaxed" rows={3} />
+                          disabled={!(ePerms.canFull || ePerms.canEditLimited)} placeholder="Ex: Depende de aprovação do projeto de lei XPTO" className="input-field text-xs resize-y leading-relaxed" rows={3} />
                         <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                       </div>
 
@@ -1900,8 +2442,9 @@ export default function ProjetoDetalhePage() {
                                           value={editForm.responsavel_atividade_id}
                                           onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
                                           users={(() => {
+                                            if (!isAdminOrMaster) return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === editForm.responsavel_atividade_id || u.setor_id === profile?.setor_id))
                                             const entregaSetorIds = new Set((editForm.entrega_participantes || []).filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
-                                            return eligibleUsers.filter(u => u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                                            return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id))))
                                           })()}
                                           placeholder="Selecione o responsável..."
                                           disabled={!(aPerms.canFull || aPerms.canEditLimited)}
@@ -2072,8 +2615,9 @@ export default function ProjetoDetalhePage() {
                                     value={editForm.responsavel_atividade_id}
                                     onChange={val => setEditForm({...editForm, responsavel_atividade_id: val})}
                                     users={(() => {
+                                      if (!isAdminOrMaster) return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === editForm.responsavel_atividade_id || u.setor_id === profile?.setor_id))
                                       const entregaSetorIds = new Set((editForm.entrega_participantes || []).filter((ep: any) => ep.tipo_participante === 'setor' && ep.setor_id).map((ep: any) => ep.setor_id))
-                                      return eligibleUsers.filter(u => u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id)))
+                                      return eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === editForm.responsavel_atividade_id || (u.setor_id && entregaSetorIds.has(u.setor_id))))
                                     })()}
                                     placeholder="Selecione o responsável..."
                                     onRegisterNew={() => setShowGestorModal(['gestor'])}

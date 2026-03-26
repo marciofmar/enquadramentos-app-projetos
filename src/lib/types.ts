@@ -152,6 +152,18 @@ export interface SolicitacaoAlteracao {
   created_at: string
 }
 
+export interface Indicador {
+  id?: number
+  projeto_id?: number
+  nome: string
+  formula: string
+  fonte_dados: string
+  periodicidade: string
+  unidade_medida: string
+  responsavel: string
+  meta: string
+}
+
 export interface AuditLogEntry {
   id: number
   usuario_id: string
