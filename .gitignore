@@ -10,3 +10,6 @@ supabase/.temp
 imagem_de_teste.sql
 dump_public.sql
 dump_auth.sql
+deploy.ps1
+deploy-hml.ps1
+deploy-prod.ps1
