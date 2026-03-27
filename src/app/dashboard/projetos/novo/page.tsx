@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle, BookOpen } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
@@ -59,7 +59,7 @@ export default function NovoProjetoPage() {
   const [objetivos, setObjetivos] = useState('')
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavelId, setResponsavelId] = useState<string | null>(null)
-  const [indicadores, setIndicadores] = useState<{nome:string,formula:string,fonte_dados:string,periodicidade:string,unidade_medida:string,responsavel:string,meta:string}[]>([])
+  const [indicadores, setIndicadores] = useState<{ nome: string, formula: string, fonte_dados: string, periodicidade: string, unidade_medida: string, responsavel: string, meta: string }[]>([])
   const [dependenciasProjetos, setDependenciasProjetos] = useState('')
   const savingRef = useRef(false)
 
@@ -78,7 +78,7 @@ export default function NovoProjetoPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    const hideGuideline = localStorage.getItem('hideProjectGuideline')
+    const hideGuideline = localStorage.getItem('hideProjectGuidelineV2')
     if (hideGuideline !== 'true') {
       setModalOpen(true)
       setModalShowCheckbox(true)
@@ -650,14 +650,26 @@ export default function NovoProjetoPage() {
         <ArrowLeft size={16} /> Voltar aos projetos
       </button>
 
-      <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Novo Projeto</h1>
-        <button type="button" onClick={() => setHelpType('projeto')} className="text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
-          <HelpCircle size={20} />
-        </button>
-        <button onClick={() => setHelpType('permissoes')} className="text-gray-400 hover:text-sedec-500 ml-2 transition-colors" title="Regras de permissão">
-          <HelpCircle size={16} />
-        </button>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div className="flex-1">
+          <div className="w-full pr-4">
+            <h1 className="text-2xl font-bold text-gray-800 inline leading-tight align-middle">Novo Projeto</h1>
+            <button type="button" onClick={() => setHelpType('projeto')} className="inline-flex align-middle ml-2 text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
+              <HelpCircle size={20} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex gap-2 shrink-0 items-center">
+          <button type="button" onClick={openHelpModal}
+            className="flex items-center gap-1.5 text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors"
+            title="Guia de preenchimento">
+            <BookOpen size={14} /> Guia
+          </button>
+          <button type="button" onClick={() => setHelpType('permissoes')} className="flex items-center gap-1.5 text-xs text-sedec-500 hover:text-sedec-700 bg-sedec-50 hover:bg-sedec-100 px-2.5 py-1.5 rounded-lg transition-colors font-medium border border-sedec-200" title="Regras de permissão">
+            <HelpCircle size={14} /> Permissões
+          </button>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -667,13 +679,13 @@ export default function NovoProjetoPage() {
             <h2 className="text-lg font-bold text-gray-800">Dados do Projeto</h2>
             <p className="text-xs text-gray-500 mt-1">Preencha as informações básicas para iniciar o escopo do projeto.</p>
           </div>
-          
+
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nome do projeto <span className="text-red-500">*</span></label>
-                <input type="text" value={nome} onChange={e => setNome(e.target.value)} 
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700" 
+                <input type="text" value={nome} onChange={e => setNome(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700"
                   placeholder="Nome claro e objetivo" />
               </div>
 
@@ -780,7 +792,7 @@ export default function NovoProjetoPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso</label>
+                    <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso - Como saberemos que funcionou?</label>
                   </div>
                   <button type="button" onClick={() => setIndicadores([...indicadores, { nome: '', formula: '', fonte_dados: '', periodicidade: '', unidade_medida: '', responsavel: '', meta: '' }])}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
@@ -996,18 +1008,18 @@ export default function NovoProjetoPage() {
                       {!e.orgao_responsavel_setor_id ? (
                         <p className="text-[10px] text-gray-400 mt-1 italic px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">Selecione o órgão responsável primeiro.</p>
                       ) : (
-                      <UserAutocompleteSelect
-                        value={e.responsavel_entrega_id}
-                        onChange={val => {
-                          const updated = [...entregas]
-                          updated[eIdx].responsavel_entrega_id = val
-                          setEntregas(updated)
-                        }}
-                        users={eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === e.responsavel_entrega_id || u.setor_id === e.orgao_responsavel_setor_id))}
-                        placeholder="Selecione o responsável..."
-                        required
-                        onRegisterNew={() => setShowGestorModal(['gestor'])}
-                      />
+                        <UserAutocompleteSelect
+                          value={e.responsavel_entrega_id}
+                          onChange={val => {
+                            const updated = [...entregas]
+                            updated[eIdx].responsavel_entrega_id = val
+                            setEntregas(updated)
+                          }}
+                          users={eligibleUsers.filter(u => u.role !== 'usuario' && (u.id === e.responsavel_entrega_id || u.setor_id === e.orgao_responsavel_setor_id))}
+                          placeholder="Selecione o responsável..."
+                          required
+                          onRegisterNew={() => setShowGestorModal(['gestor'])}
+                        />
                       )}
                     </div>
                   </div>
@@ -1018,13 +1030,12 @@ export default function NovoProjetoPage() {
                       <div className="min-w-[160px]">
                         <label className="text-xs font-medium text-gray-500">Status</label>
                         <select value={e.status} onChange={ev => updateEntrega(eIdx, 'status', ev.target.value)}
-                          className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                            e.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                            e.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                            e.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                            e.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                            'border-gray-300 bg-white text-gray-700'
-                          }`}>
+                          className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${e.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                              e.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                e.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                  e.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                    'border-gray-300 bg-white text-gray-700'
+                            }`}>
                           {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                         </select>
                       </div>
@@ -1042,13 +1053,12 @@ export default function NovoProjetoPage() {
                           placeholder="Opcional" className="input-field text-xs" />
                       </div>
                     </div>
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${
-                      e.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                      e.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                      e.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                      e.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                      'bg-gray-50 text-gray-500 border border-gray-100'
-                    }`}>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${e.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        e.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                          e.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                            e.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                              'bg-gray-50 text-gray-500 border border-gray-100'
+                      }`}>
                       <Info size={12} className="shrink-0" />
                       <span>{STATUS_ENTREGA[e.status]?.hint}</span>
                     </div>
@@ -1125,13 +1135,12 @@ export default function NovoProjetoPage() {
                               <div className="w-[140px]">
                                 <label className="text-[10px] font-medium text-gray-500">Status</label>
                                 <select value={a.status} onChange={ev => updateAtividade(eIdx, aIdx, 'status', ev.target.value)}
-                                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${
-                                    a.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                    a.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                    a.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                    a.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                    'border-gray-300 bg-white text-gray-700'
-                                  }`}>
+                                  className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${a.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
+                                      a.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                        a.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                          a.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                            'border-gray-300 bg-white text-gray-700'
+                                    }`}>
                                   {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                 </select>
                               </div>
@@ -1160,13 +1169,12 @@ export default function NovoProjetoPage() {
                                   placeholder="Opcional" className="input-field text-xs" />
                               </div>
                             </div>
-                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${
-                              a.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              a.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                              a.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                              a.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                              'bg-gray-50 text-gray-500 border border-gray-100'
-                            }`}>
+                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${a.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                a.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                  a.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                    a.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                      'bg-gray-50 text-gray-500 border border-gray-100'
+                              }`}>
                               <Info size={11} className="shrink-0" />
                               <span>{STATUS_ENTREGA[a.status]?.hint}</span>
                             </div>

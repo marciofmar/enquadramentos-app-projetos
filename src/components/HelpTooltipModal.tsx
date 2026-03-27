@@ -245,9 +245,9 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             O nome do indicador deve deixar imediatamente claro o que está sendo medido e em que direção o projeto quer mover esse valor.
           </p>
-          <p>
-            Evite nomes genéricos como &quot;índice de desempenho&quot; ou &quot;taxa de execução&quot; — esses são vagos e medem esforço, não transformação. Prefira indicadores que evidenciem mudança real na causa que o projeto ataca.
-          </p>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Evite nomes genéricos como &quot;índice de desempenho&quot; ou &quot;taxa de execução&quot; — esses são vagos e medem esforço, não transformação. Prefira indicadores que evidenciem mudança real na causa que o projeto ataca.</p>
+          </div>
         </div>
       )
     },
@@ -258,9 +258,9 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             A fórmula garante que o indicador seja calculado sempre da mesma forma, independentemente de quem o apure.
           </p>
-          <p>
-            Se não houver cálculo (ex.: indicadores binários como &quot;plano elaborado: sim/não&quot;), registre isso explicitamente.
-          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p>Se não houver cálculo (ex.: indicadores binários como &quot;plano elaborado: sim/não&quot;), registre isso explicitamente.</p>
+          </div>
         </div>
       )
     },
@@ -271,9 +271,9 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             A fonte de dados deve ser uma referência concreta e acessível — não uma fonte que ainda precisará ser criada.
           </p>
-          <p>
-            Se a fonte ainda não existe, isso pode indicar que o indicador precisa ser revisto ou que sua criação é ela própria uma entrega do projeto.
-          </p>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Se a fonte ainda não existe, isso pode indicar que o indicador precisa ser revisto ou que sua criação é ela própria uma entrega do projeto.</p>
+          </div>
         </div>
       )
     },
@@ -284,12 +284,14 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             A periodicidade deve ser compatível com a natureza do indicador.
           </p>
-          <p>
-            Para indicadores de <span className="font-bold">processo</span> — aqueles que medem o avanço das atividades e entregas — prefira periodicidades curtas que permitam identificar desvios enquanto ainda há tempo de agir.
-          </p>
-          <p>
-            Para indicadores de <span className="font-bold">resultado</span> — aqueles que medem a transformação real da causa ou do problema — a periodicidade pode necessariamente ser maior que a duração do projeto, especialmente quando o fenômeno a ser medido ocorre de forma esparsa ou sazonal. Nesses casos, o projeto contribui para criar as condições de mudança, mas a verificação do impacto transcende seu horizonte temporal.
-          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="mb-2">
+              Para indicadores de <span className="font-bold">processo</span> — aqueles que medem o avanço das atividades e entregas — prefira periodicidades curtas que permitam identificar desvios enquanto ainda há tempo de agir.
+            </p>
+            <p>
+              Para indicadores de <span className="font-bold">resultado</span> — aqueles que medem a transformação real da causa ou do problema — a periodicidade pode necessariamente ser maior que a duração do projeto, especialmente quando o fenômeno a ser medido ocorre de forma esparsa ou sazonal. Nesses casos, o projeto contribui para criar as condições de mudança, mas a verificação do impacto transcende seu horizonte temporal.
+            </p>
+          </div>
         </div>
       )
     },
@@ -300,9 +302,9 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             A unidade de medida deve ser coerente com a fórmula de cálculo e com a meta estabelecida.
           </p>
-          <p>
-            Unidades vagas como &quot;nível&quot; ou &quot;grau&quot; dificultam a verificação objetiva do resultado.
-          </p>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Unidades vagas como &quot;nível&quot; ou &quot;grau&quot; dificultam a verificação objetiva do resultado.</p>
+          </div>
         </div>
       )
     },
@@ -313,9 +315,9 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             O responsável pelo indicador não precisa ser o mesmo que lidera o projeto — pode ser quem tem acesso direto à fonte de dados.
           </p>
-          <p>
-            O importante é que haja uma pessoa claramente designada, para que a medição não fique dependente de iniciativa espontânea.
-          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p>O importante é que haja uma pessoa claramente designada, para que a medição não fique dependente de iniciativa espontânea.</p>
+          </div>
         </div>
       )
     },
@@ -326,16 +328,16 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <p>
             A meta deve ser específica, mensurável e com prazo definido. Evite metas vagas como &quot;melhorar&quot; ou &quot;aumentar&quot; sem um valor de referência.
           </p>
-          <p>
-            Quando não houver linha de base conhecida, duas abordagens são admissíveis:
-          </p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>Registrar explicitamente essa ausência e incluir a construção do indicador e a apuração da linha de base como entrega do projeto — sendo a meta inicial, nesse caso, a própria realização dessa apuração.</li>
-            <li>Adotar um indicador qualitativo, expresso em escala descritiva ou avaliação estruturada, quando o fenômeno a ser medido não for facilmente quantificável.</li>
-          </ul>
-          <p>
-            Em ambos os casos, o importante é que haja um compromisso claro com a forma e o momento em que o resultado será verificado.
-          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Quando não houver linha de base conhecida, duas abordagens são admissíveis:</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Registrar explicitamente essa ausência e incluir a construção do indicador e a apuração da linha de base como entrega do projeto — sendo a meta inicial, nesse caso, a própria realização dessa apuração.</li>
+              <li>Adotar um indicador qualitativo, expresso em escala descritiva ou avaliação estruturada, quando o fenômeno a ser medido não for facilmente quantificável.</li>
+            </ul>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
+            <p>Em ambos os casos, o importante é que haja um compromisso claro com a forma e o momento em que o resultado será verificado.</p>
+          </div>
         </div>
       )
     },

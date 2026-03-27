@@ -21,7 +21,7 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
 
   const handleClose = () => {
     if (showCheckbox && naoMostrarNovamente) {
-      localStorage.setItem('hideProjectGuideline', 'true')
+      localStorage.setItem('hideProjectGuidelineV2', 'true')
     }
     onClose()
   }
@@ -39,92 +39,40 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
 
         <div className="p-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-4">
-            Diretriz simples para nossos projetos e reuniões:
+            Antes de começar: três minutos que vão fazer toda a diferença
           </h2>
           
           <div className="space-y-4 text-gray-700 leading-relaxed text-sm lg:text-base">
-            <p className="font-medium text-gray-900">
-              Antes de discutir soluções, precisamos identificar claramente qual problema queremos resolver.
-            </p>
             <p>
-              Para organizar esse raciocínio, devemos utilizar cinco perguntas simples, na ordem correta:
+              O formulário de cadastro foi organizado em uma sequência lógica e intencional. Cada campo prepara o raciocínio necessário para preencher o campo seguinte — e seguir essa ordem é o que garante que o projeto nasce com qualidade, clareza de propósito e chances reais de ser priorizado e executado com sucesso.
             </p>
 
             <div className="bg-orange-50 rounded-lg p-5 my-6 border border-orange-100">
               <ol className="list-decimal pl-5 space-y-3 font-medium text-orange-900">
-                <li>Qual é o problema?</li>
-                <li>Por que ele acontece?</li>
-                <li>O que podemos fazer para reduzir isso?</li>
-                <li>Como saberemos que melhorou?</li>
-                <li>Quem conduzirá essa ação?</li>
+                <li>Problema Identificado — POR QUÊ o projeto existe</li>
+                <li>Causas do Problema — O QUE origina essa situação</li>
+                <li>Consequências Diretas do Problema — O QUE acontece por causa dele</li>
+                <li>Objetivo do Projeto — PARA QUÊ ele existe</li>
+                <li>Descrição da Solução Proposta — O QUÊ será feito</li>
+                <li>Indicador(es) de sucesso - Como saberemos que funcionou?</li>
+                <li>Dependências com outros projetos</li>
               </ol>
             </div>
 
             <p>
-              Essa estrutura ajuda a melhorar a qualidade das decisões e a conectar nossas iniciativas a resultados concretos.
+              Cada campo do formulário possui um ícone de ajuda — o símbolo <span className="font-bold text-orange-600">(?)</span> ao lado do título. Antes de preencher qualquer campo, abra esse ícone e leia a orientação. Ela explica exatamente o que registrar ali, traz exemplos práticos e aponta os erros mais comuns a evitar. Esse pequeno gesto vai poupar retrabalho, tornar seu projeto mais sólido e facilitar sua aprovação pelo Gabinete de Projetos.
             </p>
 
-            <div className="bg-gray-50 rounded-lg p-5 mt-6 border border-gray-100 text-sm">
-              <p className="font-semibold text-gray-800 mb-3">No âmbito do cadastramento de projetos:</p>
-              <ul className="space-y-2">
-                <li><span className="font-medium">Perguntas 1 e 2:</span> entram no campo <span className="italic">"Problema que soluciona — Por quê"</span>;</li>
-                <li><span className="font-medium">Pergunta 3:</span> entra no campo <span className="italic">"Descrição da solução proposta — O quê"</span>;</li>
-                <li><span className="font-medium">Pergunta 4:</span> entra no campo <span className="italic">"Indicador(es) de sucesso"</span>;</li>
-                <li><span className="font-medium">Pergunta 5:</span> entra nos campos <span className="italic">"Setor líder, Responsável pelo projeto e Participantes das entregas e atividades"</span>.</li>
-              </ul>
+            <div className="bg-blue-50 rounded-lg p-5 mt-6 border border-blue-100 text-sm">
+              <p className="font-semibold text-blue-900 mb-2">💡 Dica: resista à tentação de começar pela solução.</p>
+              <p className="text-blue-800">
+                O formulário foi desenhado para que a solução só apareça depois que o problema estiver completamente compreendido. Esse é o caminho mais curto para um projeto bem formulado.
+              </p>
             </div>
 
-            {/* Exemplos Práticos */}
-            <div className="mt-8 rounded-xl border border-blue-100 overflow-hidden">
-              <div className="bg-blue-50 px-5 py-3 border-b border-blue-100">
-                <h3 className="font-bold text-blue-900 flex items-center gap-2">
-                  <span className="text-xl">💡</span> Exemplos Práticos para Inspiração
-                </h3>
-              </div>
-              <div className="bg-white p-5 space-y-6 text-[13px] lg:text-sm">
-                
-                {/* Exemplo 1 */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-gray-800 border-l-4 border-orange-400 pl-3">Exemplo 1: Portfólio de Projetos (Foco em Efetividade)</h4>
-                  <ul className="space-y-1.5 pl-4 text-gray-700">
-                    <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Baixa implementação de projetos de proteção comunitária nos municípios.</li>
-                    <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> As COMDECs não possuem modelos técnicos ou metodologias prontas para replicar.</li>
-                    <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Criar um "Portfólio de Projetos-Prateleira" com modelos validados pela SEDEC.</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Aumento do número de municípios que implementaram ao menos um projeto do portfólio. (projete também o horizonte temporal para que isso aconteça)</li>
-                    <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> DGAC (Líder) e participantes técnicos do ICTDEC/DAEAD.</li>
-                  </ul>
-                </div>
-
-                <hr className="border-gray-100" />
-
-                {/* Exemplo 2 */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-gray-800 border-l-4 border-orange-400 pl-3">Exemplo 2: Sistematização de Processos (Foco em Governança)</h4>
-                  <ul className="space-y-1.5 pl-4 text-gray-700">
-                    <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Perda de memória técnica e atraso em processos durante trocas de comando.</li>
-                    <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> O conhecimento é personalista e não está institucionalizado em normas ou fluxos.</li>
-                    <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Mapear as tarefas críticas do setor e criar Manuais de Procedimentos Padrão (POP).</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> Redução do tempo de tramitação de processos após movimentações de pessoal. (projete também o horizonte temporal para que isso aconteça)</li>
-                    <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> Chefia do Setor (Líder) e suporte técnico da DDO/ICTDEC.</li>
-                  </ul>
-                </div>
-
-                <hr className="border-gray-100" />
-
-                {/* Exemplo 3 */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-gray-800 border-l-4 border-orange-400 pl-3">Exemplo 3: Qualificação Técnica (Foco em Doutrina)</h4>
-                  <ul className="space-y-1.5 pl-4 text-gray-700">
-                    <li><span className="font-semibold text-gray-900">Qual é o problema?</span> Decisões operacionais pautadas em percepções individuais em vez de doutrina técnica.</li>
-                    <li><span className="font-semibold text-gray-900">Por que ele acontece?</span> Falta de uma trilha de formação específica para gestores de Defesa Civil no Estado.</li>
-                    <li><span className="font-semibold text-gray-900">O que podemos fazer para reduzir isso?</span> Implementar o Curso para Formação de Gestores Estaduais com Foco em Gestão Integrada de Riscos e Desastres - GEGIRD-RJ.</li>
-                    <li><span className="font-semibold text-gray-900">Como saberemos que melhorou?</span> 70% dos gestores da SUOP certificados e aplicando terminologia padrão em relatórios. (projete também o horizonte temporal para que isso aconteça)</li>
-                    <li><span className="font-semibold text-gray-900">Quem conduzirá essa ação?</span> DFPC/ICTDEC, CEPEDEC e ESDEC.</li>
-                  </ul>
-                </div>
-
-              </div>
-            </div>
+            <p>
+              Siga a ordem dos campos, consulte as orientações de ajuda e registre cada informação com objetividade. O tempo investido aqui é o que irá garantir o sucesso e efetividade de seu projeto.
+            </p>
 
           </div>
 

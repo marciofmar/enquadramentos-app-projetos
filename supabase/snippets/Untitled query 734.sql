@@ -1,0 +1,1 @@
+UPDATE public.profiles SET role = 'usuario', ativo = true WHERE id = '55888998-22e9-4914-b2f4-e63a85b1f3fb';
