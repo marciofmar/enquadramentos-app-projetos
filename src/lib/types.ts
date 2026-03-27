@@ -95,6 +95,9 @@ export interface Projeto {
   nome: string
   descricao: string
   problema_resolve: string
+  causas: string
+  consequencias_diretas: string
+  objetivos: string
   responsavel_id: string | null
   data_inicio: string | null
   indicador_sucesso: string | null

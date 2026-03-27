@@ -3,7 +3,13 @@
 import { X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
-export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes' | null
+export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes'
+  | 'campo_problema' | 'campo_causas' | 'campo_consequencias'
+  | 'campo_objetivo' | 'campo_descricao'
+  | 'campo_ind_nome' | 'campo_ind_formula' | 'campo_ind_fonte'
+  | 'campo_ind_periodicidade' | 'campo_ind_unidade' | 'campo_ind_responsavel'
+  | 'campo_ind_meta' | 'campo_dependencias'
+  | null
 
 interface Props {
   type: HelpType
@@ -20,13 +26,13 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
 
   if (!mounted || !type) return null
 
-  const content = {
+  const content: Record<string, { title: string; body: React.ReactNode }> = {
     projeto: {
       title: 'O que é um Projeto?',
       body: (
         <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
           <p>
-            Um Projeto é uma iniciativa estruturada, com início e término definidos, que visa produzir uma mudança institucional relevante. Ele responde à pergunta: <span className="italic font-medium">"O que queremos transformar ou construir?"</span>
+            Um Projeto é uma iniciativa estruturada, com início e término definidos, que visa produzir uma mudança institucional relevante. Ele responde à pergunta: <span className="italic font-medium">&quot;O que queremos transformar ou construir?&quot;</span>
           </p>
           <p>
             Um projeto agrupa um conjunto de Entregas que, somadas, produzem o resultado esperado. Ele representa o esforço como um todo — não um produto isolado.
@@ -51,7 +57,7 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
       body: (
         <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
           <p>
-            Uma Entrega é um resultado concreto e verificável produzido dentro de um Projeto, com prazo e responsável definidos. Ela responde à pergunta: <span className="italic font-medium">"O que ficará em pé ao final do esforço — algo que pode ser visto, usado ou auditado?"</span>
+            Uma Entrega é um resultado concreto e verificável produzido dentro de um Projeto, com prazo e responsável definidos. Ela responde à pergunta: <span className="italic font-medium">&quot;O que ficará em pé ao final do esforço — algo que pode ser visto, usado ou auditado?&quot;</span>
           </p>
           <p>
             Uma Entrega deve ser verificável: qualquer pessoa consegue confirmar objetivamente se ela foi concluída ou não.
@@ -68,8 +74,8 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
             <p className="font-bold mb-2">Zona de confusão frequente:</p>
             <ul className="list-disc pl-5 space-y-2 mb-3">
-              <li><span className="italic">"Realizar reunião de alinhamento com os municípios"</span> → isso é uma <span className="font-bold">Atividade</span>, não uma Entrega. Reuniões, revisões e aplicações de questionário são trabalho — não produto.</li>
-              <li><span className="italic">"Estruturação da rede de voluntários"</span> → isso é um <span className="font-bold">Projeto</span> inteiro, não uma Entrega.</li>
+              <li><span className="italic">&quot;Realizar reunião de alinhamento com os municípios&quot;</span> → isso é uma <span className="font-bold">Atividade</span>, não uma Entrega. Reuniões, revisões e aplicações de questionário são trabalho — não produto.</li>
+              <li><span className="italic">&quot;Estruturação da rede de voluntários&quot;</span> → isso é um <span className="font-bold">Projeto</span> inteiro, não uma Entrega.</li>
             </ul>
             <p className="font-medium">Regra prática: se o que você quer registrar é algo que a equipe <span className="font-bold">faz</span>, mas que não deixa um produto verificável e durável — é uma Atividade. Se abrange um esforço com múltiplas fases e entregas distintas — é um Projeto.</p>
           </div>
@@ -81,7 +87,7 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
       body: (
         <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
           <p>
-            Uma Atividade é uma ação concreta realizada pela equipe dentro do ciclo de uma Entrega. Ela responde à pergunta: <span className="italic font-medium">"O que precisamos fazer para chegar à Entrega?"</span>
+            Uma Atividade é uma ação concreta realizada pela equipe dentro do ciclo de uma Entrega. Ela responde à pergunta: <span className="italic font-medium">&quot;O que precisamos fazer para chegar à Entrega?&quot;</span>
           </p>
           <p>
             Atividades são o trabalho visível do dia a dia. Elas consomem tempo e esforço da equipe e alimentam o avanço em direção a um resultado — mas não são o resultado em si.
@@ -152,14 +158,211 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           </div>
         </div>
       )
-    }
+    },
+    campo_problema: {
+      title: 'Problema Identificado',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            O problema é a situação negativa concreta que o projeto pretende transformar. Um erro comum é descrever a ausência da solução como se fosse o problema (ex.: &quot;falta de treinamento&quot;). O problema real é o impacto que essa ausência gera (ex.: &quot;população despreparada para situações de risco, com comportamentos que aumentam sua exposição a desastres&quot;).
+          </p>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Se o seu texto já contém palavras como &quot;implantar&quot;, &quot;desenvolver&quot; ou &quot;adquirir&quot;, você provavelmente está descrevendo a solução, não o problema. Volte uma etapa e pergunte: <span className="font-bold">qual situação negativa essa ação pretende resolver?</span></p>
+          </div>
+        </div>
+      )
+    },
+    campo_causas: {
+      title: 'Causas do Problema',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            As causas explicam por que o problema existe e persistem. Identificá-las corretamente é o que garante que a solução escolhida será efetiva — atacar o problema sem entender suas causas é como tratar sintomas sem diagnosticar a doença.
+          </p>
+          <p>
+            O projeto não precisa eliminar todas as causas, mas deve deixar explícito sobre quais pretende atuar.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Como verificar:</p>
+            <p>Para verificar se você identificou uma causa real, pergunte-se: <span className="italic">&quot;Se esse fator fosse eliminado, o problema diminuiria ou desapareceria?&quot;</span> Se a resposta for sim, é uma causa. Se for não, pode ser uma consequência ou um fator irrelevante.</p>
+          </div>
+        </div>
+      )
+    },
+    campo_consequencias: {
+      title: 'Consequências Diretas do Problema',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Registre apenas as consequências diretas — aquelas que decorrem imediatamente do problema identificado, sem depender de uma cadeia longa de eventos intermediários.
+          </p>
+          <p>
+            Evite consequências indiretas ou especulativas: se você precisar de mais de um &quot;e por isso...&quot; para chegar ao impacto descrito, provavelmente está indo longe demais na cadeia causal.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Exemplo:</p>
+            <p>Se o problema é a baixa percepção de risco, uma consequência direta é o comportamento inadequado do morador em situação de emergência — <span className="font-bold">não</span> o aumento do número de vítimas em eventos climáticos extremos ou sobrecarga dos serviços de resposta ou elevação dos custos de recuperação pós-desastre ou o colapso do sistema de saúde, que dependem de muitos outros fatores.</p>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
+            <p>Consequências diretas bem mapeadas são o principal argumento para justificar a priorização do projeto: elas tornam visível o <span className="font-bold">custo institucional e social de não agir</span>.</p>
+          </div>
+        </div>
+      )
+    },
+    campo_objetivo: {
+      title: 'Objetivo do Projeto',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            O objetivo é a resposta à pergunta: <span className="italic font-medium">&quot;Se o projeto for bem-sucedido, o que terá mudado na realidade?&quot;</span> Ele deve estar diretamente conectado às causas que o projeto se propõe a atacar — não à entrega que será produzida.
+          </p>
+          <p>
+            Entregar um manual não é um objetivo; é um meio. O objetivo é o que muda por causa desse manual. Um projeto pode ter mais de um objetivo, desde que todos decorram das causas identificadas e se mantenham coesos dentro do escopo definido.
+          </p>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Se o seu objetivo soa como uma atividade ou uma entrega, reformule: substitua verbos de ação (<span className="italic">publicar, adquirir, realizar</span>) por verbos de transformação (<span className="font-bold">aumentar, reduzir, fortalecer, garantir</span>).</p>
+          </div>
+        </div>
+      )
+    },
+    campo_descricao: {
+      title: 'Descrição da Solução Proposta',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A solução é o meio pelo qual o projeto alcança seu objetivo. Antes de descrevê-la, verifique: ela atua diretamente sobre as causas que você identificou? Se não houver essa conexão, revise o diagnóstico ou a proposta.
+          </p>
+          <p>
+            A solução deve representar uma condição estruturante — algo que gera mudança duradoura — e não apenas uma atividade pontual. Ela também deve ser viável dentro do escopo institucional do setor e possuir potencial de continuidade após o encerramento do projeto.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_nome: {
+      title: 'Nome do Indicador',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            O nome do indicador deve deixar imediatamente claro o que está sendo medido e em que direção o projeto quer mover esse valor.
+          </p>
+          <p>
+            Evite nomes genéricos como &quot;índice de desempenho&quot; ou &quot;taxa de execução&quot; — esses são vagos e medem esforço, não transformação. Prefira indicadores que evidenciem mudança real na causa que o projeto ataca.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_formula: {
+      title: 'Fórmula de Cálculo',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A fórmula garante que o indicador seja calculado sempre da mesma forma, independentemente de quem o apure.
+          </p>
+          <p>
+            Se não houver cálculo (ex.: indicadores binários como &quot;plano elaborado: sim/não&quot;), registre isso explicitamente.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_fonte: {
+      title: 'Fonte de Dados',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A fonte de dados deve ser uma referência concreta e acessível — não uma fonte que ainda precisará ser criada.
+          </p>
+          <p>
+            Se a fonte ainda não existe, isso pode indicar que o indicador precisa ser revisto ou que sua criação é ela própria uma entrega do projeto.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_periodicidade: {
+      title: 'Periodicidade/Frequência',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A periodicidade deve ser compatível com a natureza do indicador.
+          </p>
+          <p>
+            Para indicadores de <span className="font-bold">processo</span> — aqueles que medem o avanço das atividades e entregas — prefira periodicidades curtas que permitam identificar desvios enquanto ainda há tempo de agir.
+          </p>
+          <p>
+            Para indicadores de <span className="font-bold">resultado</span> — aqueles que medem a transformação real da causa ou do problema — a periodicidade pode necessariamente ser maior que a duração do projeto, especialmente quando o fenômeno a ser medido ocorre de forma esparsa ou sazonal. Nesses casos, o projeto contribui para criar as condições de mudança, mas a verificação do impacto transcende seu horizonte temporal.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_unidade: {
+      title: 'Unidade de Medida',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A unidade de medida deve ser coerente com a fórmula de cálculo e com a meta estabelecida.
+          </p>
+          <p>
+            Unidades vagas como &quot;nível&quot; ou &quot;grau&quot; dificultam a verificação objetiva do resultado.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_responsavel: {
+      title: 'Responsável pelo Indicador',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            O responsável pelo indicador não precisa ser o mesmo que lidera o projeto — pode ser quem tem acesso direto à fonte de dados.
+          </p>
+          <p>
+            O importante é que haja uma pessoa claramente designada, para que a medição não fique dependente de iniciativa espontânea.
+          </p>
+        </div>
+      )
+    },
+    campo_ind_meta: {
+      title: 'Meta',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            A meta deve ser específica, mensurável e com prazo definido. Evite metas vagas como &quot;melhorar&quot; ou &quot;aumentar&quot; sem um valor de referência.
+          </p>
+          <p>
+            Quando não houver linha de base conhecida, duas abordagens são admissíveis:
+          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Registrar explicitamente essa ausência e incluir a construção do indicador e a apuração da linha de base como entrega do projeto — sendo a meta inicial, nesse caso, a própria realização dessa apuração.</li>
+            <li>Adotar um indicador qualitativo, expresso em escala descritiva ou avaliação estruturada, quando o fenômeno a ser medido não for facilmente quantificável.</li>
+          </ul>
+          <p>
+            Em ambos os casos, o importante é que haja um compromisso claro com a forma e o momento em que o resultado será verificado.
+          </p>
+        </div>
+      )
+    },
+    campo_dependencias: {
+      title: 'Dependências com outros projetos',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Dependências não mapeadas são uma das principais causas de atraso em projetos.
+          </p>
+          <p>
+            Registre tanto <span className="font-bold">dependências de entrada</span> — o que este projeto precisa receber de outros — quanto <span className="font-bold">dependências de saída</span> — o que outros projetos aguardam deste.
+          </p>
+          <p>
+            Isso permite que o Gabinete de Projetos identifique riscos de bloqueio antes que eles ocorram e planeje reuniões com os setores e órgãos envolvidos.
+          </p>
+        </div>
+      )
+    },
   }
 
   const currentContent = content[type]
+  if (!currentContent) return null
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div 
+      <div
         className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
         onClick={e => e.stopPropagation()}
       >
@@ -175,7 +378,7 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-4 pr-8">
             {currentContent.title}
           </h2>
-          
+
           {currentContent.body}
 
           <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">

@@ -19,11 +19,11 @@ supabase/.temp
 *.sql
 !supabase/migrations/*.sql
 
-# Dumps binários
+# Dumps binarios
 *.dump
 *.zip
 
-# Scripts de deploy (contêm referências ao projeto)
+# Scripts de deploy (contem referencias ao projeto)
 deploy.ps1
 deploy-hml.ps1
 deploy-prod.ps1
