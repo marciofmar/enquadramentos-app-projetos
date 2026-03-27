@@ -1654,7 +1654,7 @@ export default function ProjetoDetalhePage() {
               <div className="space-y-6 pt-4 border-t border-blue-100/50">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Problema Identificado — POR QUÊ o projeto existe</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Problema Identificado — POR QUE o projeto existe</label>
                     <button type="button" onClick={() => setHelpType('campo_problema')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
@@ -1684,7 +1684,7 @@ export default function ProjetoDetalhePage() {
 
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Objetivo do Projeto — PARA QUÊ ele existe</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Objetivo do Projeto — PARA QUE ele existe</label>
                     <button type="button" onClick={() => setHelpType('campo_objetivo')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.objetivos || ''} onChange={e => setEditForm({ ...editForm, objetivos: e.target.value })}
@@ -1694,7 +1694,7 @@ export default function ProjetoDetalhePage() {
 
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição da Solução Proposta — O QUÊ será feito</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição da Solução Proposta — O QUE será feito</label>
                     <button type="button" onClick={() => setHelpType('campo_descricao')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
@@ -1901,7 +1901,7 @@ export default function ProjetoDetalhePage() {
 
               <div className="space-y-4 mb-4">
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema Identificado — POR QUÊ o projeto existe</h3>
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema Identificado — POR QUE o projeto existe</h3>
                   <ul className="space-y-1.5 mt-2">
                     {projeto.problema_resolve?.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
                       <li key={i} className="flex items-start gap-2">
@@ -1942,13 +1942,13 @@ export default function ProjetoDetalhePage() {
 
                 {projeto.objetivos && (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-green-500" /> Objetivo do Projeto — PARA QUÊ ele existe</h3>
+                    <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-green-500" /> Objetivo do Projeto — PARA QUE ele existe</h3>
                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.objetivos}</p>
                   </div>
                 )}
 
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-blue-500" /> Descrição da Solução Proposta — O QUÊ será feito</h3>
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-blue-500" /> Descrição da Solução Proposta — O QUE será feito</h3>
                   <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.descricao}</p>
                 </div>
               </div>
@@ -2131,10 +2131,10 @@ export default function ProjetoDetalhePage() {
                     <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Status</label>
                     <select value={newEntregaForm.status} onChange={ev => setNewEntregaForm({ ...newEntregaForm, status: ev.target.value })}
                       className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${newEntregaForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                          newEntregaForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                            newEntregaForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                              newEntregaForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                'border-gray-300 bg-white text-gray-700'
+                        newEntregaForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                          newEntregaForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                            newEntregaForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                              'border-gray-300 bg-white text-gray-700'
                         }`}>
                       {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
@@ -2161,10 +2161,10 @@ export default function ProjetoDetalhePage() {
                   </div>
                 </div>
                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${newEntregaForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                    newEntregaForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                      newEntregaForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                        newEntregaForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                          'bg-gray-50 text-gray-500 border border-gray-100'
+                  newEntregaForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                    newEntregaForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                      newEntregaForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                        'bg-gray-50 text-gray-500 border border-gray-100'
                   }`}>
                   <Info size={12} className="shrink-0" />
                   <span>{STATUS_ENTREGA[newEntregaForm.status]?.hint}</span>
@@ -2338,10 +2338,10 @@ export default function ProjetoDetalhePage() {
                                 <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
                                   disabled={!(ePerms.canFull || ePerms.canEditLimited)}
                                   className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                      editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                        editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                          editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                            'border-gray-300 bg-white text-gray-700'
+                                    editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                      editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                        editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                          'border-gray-300 bg-white text-gray-700'
                                     }`}>
                                   {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                 </select>
@@ -2375,10 +2375,10 @@ export default function ProjetoDetalhePage() {
                               </div>
                             </div>
                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                  editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                                    editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                                      'bg-gray-50 text-gray-500 border border-gray-100'
+                              editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                  editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                    'bg-gray-50 text-gray-500 border border-gray-100'
                               }`}>
                               <Info size={12} className="shrink-0" />
                               <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
@@ -2560,10 +2560,10 @@ export default function ProjetoDetalhePage() {
                                             <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
                                               disabled={!(aPerms.canFull || aPerms.canEditLimited)}
                                               className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                                  editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                                    editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                                      editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                                        'border-gray-300 bg-white text-gray-700'
+                                                editForm.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                                  editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                                    editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                                      'border-gray-300 bg-white text-gray-700'
                                                 }`}>
                                               {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                             </select>
@@ -2592,10 +2592,10 @@ export default function ProjetoDetalhePage() {
                                           </div>
                                         </div>
                                         <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                            editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                              editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                                                editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                                                  'bg-gray-50 text-gray-500 border border-gray-100'
+                                          editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                            editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                              editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                                'bg-gray-50 text-gray-500 border border-gray-100'
                                           }`}>
                                           <Info size={11} className="shrink-0" />
                                           <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
@@ -2730,9 +2730,9 @@ export default function ProjetoDetalhePage() {
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">Status</label>
                                         <select value={editForm.status} onChange={ev => setEditForm({ ...editForm, status: ev.target.value })}
                                           className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${editForm.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                              editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                                editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                                  'border-gray-300 bg-white text-gray-700'
+                                            editForm.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                              editForm.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                                'border-gray-300 bg-white text-gray-700'
                                             }`}>
                                           {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                         </select>
@@ -2758,10 +2758,10 @@ export default function ProjetoDetalhePage() {
                                       </div>
                                     </div>
                                     <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${editForm.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                        editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                          editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                                            editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                                              'bg-gray-50 text-gray-500 border border-gray-100'
+                                      editForm.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                        editForm.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                          editForm.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                            'bg-gray-50 text-gray-500 border border-gray-100'
                                       }`}>
                                       <Info size={11} className="shrink-0" />
                                       <span>{STATUS_ENTREGA[editForm.status]?.hint}</span>
@@ -2845,8 +2845,8 @@ export default function ProjetoDetalhePage() {
             {solicitacoes.filter(s => s.status !== 'em_analise').slice(0, 10).map((s: any) => (
               <div key={s.id} className="bg-gray-50 border border-gray-200 rounded-lg p-2 flex items-center gap-3 text-xs">
                 <span className={`px-2 py-0.5 rounded-full font-medium ${s.status === 'deferida' ? 'bg-green-100 text-green-700' :
-                    s.status === 'indeferida' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-600'
+                  s.status === 'indeferida' ? 'bg-red-100 text-red-700' :
+                    'bg-gray-100 text-gray-600'
                   }`}>
                   {s.status === 'deferida' ? 'Aprovada' : s.status === 'indeferida' ? 'Recusada' : 'Cancelada'}
                 </span>

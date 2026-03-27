@@ -659,7 +659,7 @@ export default function NovoProjetoPage() {
             </button>
           </div>
         </div>
-        
+
         <div className="flex gap-2 shrink-0 items-center">
           <button type="button" onClick={openHelpModal}
             className="flex items-center gap-1.5 text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1.5 rounded-lg hover:bg-orange-100 transition-colors"
@@ -731,7 +731,7 @@ export default function NovoProjetoPage() {
             <div className="space-y-6">
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Problema Identificado — POR QUÊ o projeto existe <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700">Problema Identificado — POR QUE o projeto existe <span className="text-red-500">*</span></label>
                   <button type="button" onClick={() => setHelpType('campo_problema')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
@@ -767,7 +767,7 @@ export default function NovoProjetoPage() {
 
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Objetivo do Projeto — PARA QUÊ ele existe <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700">Objetivo do Projeto — PARA QUE ele existe <span className="text-red-500">*</span></label>
                   <button type="button" onClick={() => setHelpType('campo_objetivo')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
@@ -779,7 +779,7 @@ export default function NovoProjetoPage() {
 
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Descrição da Solução Proposta — O QUÊ será feito <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700">Descrição da Solução Proposta — O QUE será feito <span className="text-red-500">*</span></label>
                   <button type="button" onClick={() => setHelpType('campo_descricao')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
@@ -1031,10 +1031,10 @@ export default function NovoProjetoPage() {
                         <label className="text-xs font-medium text-gray-500">Status</label>
                         <select value={e.status} onChange={ev => updateEntrega(eIdx, 'status', ev.target.value)}
                           className={`w-full px-3 py-2 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${e.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                              e.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                e.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                  e.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                    'border-gray-300 bg-white text-gray-700'
+                            e.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                              e.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                e.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                  'border-gray-300 bg-white text-gray-700'
                             }`}>
                           {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                         </select>
@@ -1054,10 +1054,10 @@ export default function NovoProjetoPage() {
                       </div>
                     </div>
                     <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] ${e.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                        e.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                          e.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                            e.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                              'bg-gray-50 text-gray-500 border border-gray-100'
+                      e.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                        e.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                          e.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                            'bg-gray-50 text-gray-500 border border-gray-100'
                       }`}>
                       <Info size={12} className="shrink-0" />
                       <span>{STATUS_ENTREGA[e.status]?.hint}</span>
@@ -1136,10 +1136,10 @@ export default function NovoProjetoPage() {
                                 <label className="text-[10px] font-medium text-gray-500">Status</label>
                                 <select value={a.status} onChange={ev => updateAtividade(eIdx, aIdx, 'status', ev.target.value)}
                                   className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-2 focus:outline-none focus:ring-2 focus:ring-sedec-500 ${a.status === 'resolvida' ? 'border-green-400 bg-green-50 text-green-800' :
-                                      a.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
-                                        a.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
-                                          a.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
-                                            'border-gray-300 bg-white text-gray-700'
+                                    a.status === 'cancelada' ? 'border-red-300 bg-red-50 text-red-800' :
+                                      a.status === 'em_andamento' ? 'border-blue-300 bg-blue-50 text-blue-800' :
+                                        a.status === 'aguardando' ? 'border-yellow-300 bg-yellow-50 text-yellow-800' :
+                                          'border-gray-300 bg-white text-gray-700'
                                     }`}>
                                   {Object.entries(STATUS_ENTREGA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                 </select>
@@ -1170,10 +1170,10 @@ export default function NovoProjetoPage() {
                               </div>
                             </div>
                             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] ${a.status === 'aguardando' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                a.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                  a.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
-                                    a.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
-                                      'bg-gray-50 text-gray-500 border border-gray-100'
+                              a.status === 'em_andamento' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                a.status === 'resolvida' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                  a.status === 'cancelada' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                    'bg-gray-50 text-gray-500 border border-gray-100'
                               }`}>
                               <Info size={11} className="shrink-0" />
                               <span>{STATUS_ENTREGA[a.status]?.hint}</span>
