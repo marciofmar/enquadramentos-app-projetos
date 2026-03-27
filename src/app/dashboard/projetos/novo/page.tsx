@@ -54,6 +54,9 @@ export default function NovoProjetoPage() {
   const [nome, setNome] = useState('')
   const [descricao, setDescricao] = useState('')
   const [problemaResolve, setProblemaResolve] = useState('')
+  const [causas, setCausas] = useState('')
+  const [consequenciasDiretas, setConsequenciasDiretas] = useState('')
+  const [objetivos, setObjetivos] = useState('')
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavelId, setResponsavelId] = useState<string | null>(null)
   const [indicadores, setIndicadores] = useState<{nome:string,formula:string,fonte_dados:string,periodicidade:string,unidade_medida:string,responsavel:string,meta:string}[]>([])
@@ -232,7 +235,7 @@ export default function NovoProjetoPage() {
     if (savingRef.current) return
     savingRef.current = true
 
-    if (!nome.trim() || !descricao.trim() || !problemaResolve.trim() || !setorLiderId || acoesSelecionadas.length === 0) {
+    if (!nome.trim() || !descricao.trim() || !problemaResolve.trim() || !causas.trim() || !consequenciasDiretas.trim() || !objetivos.trim() || !setorLiderId || acoesSelecionadas.length === 0) {
       alert('Preencha todos os campos obrigatórios e selecione ao menos uma ação estratégica.')
       savingRef.current = false; return
     }
@@ -353,6 +356,7 @@ export default function NovoProjetoPage() {
     try {
       const { data: proj, error: projErr } = await supabase.from('projetos').insert({
         nome: nome.trim(), descricao: descricao.trim(), problema_resolve: problemaResolve.trim(),
+        causas: causas.trim(), consequencias_diretas: consequenciasDiretas.trim(), objetivos: objetivos.trim(),
         responsavel_id: responsavelId,
         data_inicio: dataInicio || null,
         dependencias_projetos: dependenciasProjetos.trim() || null,
@@ -712,38 +716,71 @@ export default function NovoProjetoPage() {
 
             <hr className="border-gray-100" />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Problema que soluciona — Por quê <span className="text-red-500">*</span></label>
-                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                  <label className="block text-sm font-semibold text-gray-700">Problema Identificado — POR QUÊ o projeto existe <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('campo_problema')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
                 </div>
                 <textarea value={problemaResolve} onChange={e => setProblemaResolve(e.target.value)} rows={4}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed" 
-                  placeholder="Qual problema concreto este projeto resolve?" />
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
+                  placeholder={'Descreva a situação atual que impacta negativamente os resultados do setor ou o cumprimento da missão institucional. Foque no problema em si — não em suas causas, não em como resolvê-lo. Ex.: "Comunidades em áreas de risco apresentam alta vulnerabilidade a desastres."'} />
               </div>
 
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Descrição da solução proposta — O quê <span className="text-red-500">*</span></label>
-                  <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
+                  <label className="block text-sm font-semibold text-gray-700">Causas do Problema — O QUE origina essa situação <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('campo_causas')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <textarea value={causas} onChange={e => setCausas(e.target.value)} rows={4}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
+                  placeholder={'Liste os fatores que geram ou agravam o problema identificado. Separe as causas por ponto e vírgula ou em linhas distintas. Ex.: "Baixa percepção de risco pelos moradores; ausência de cultura de preparação individual; falta de canais acessíveis de informação sobre riscos locais."'} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Consequências Diretas do Problema — O QUE acontece por causa dele <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('campo_consequencias')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <textarea value={consequenciasDiretas} onChange={e => setConsequenciasDiretas(e.target.value)} rows={4}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
+                  placeholder={'Descreva os impactos imediatos que decorrem diretamente do problema, sem depender de uma cadeia de eventos intermediários. Ex.: "Moradores permanecem em áreas de risco mesmo após emissão de alertas; famílias não adotam medidas básicas de autoproteção."'} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Objetivo do Projeto — PARA QUÊ ele existe <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('campo_objetivo')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
+                <textarea value={objetivos} onChange={e => setObjetivos(e.target.value)} rows={4}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
+                  placeholder={'Declare a transformação concreta que o projeto pretende alcançar ao atuar sobre as causas identificadas. Ex.: "Aumentar a percepção de risco em comunidades vulneráveis, reduzindo comportamentos que elevam sua exposição a situações de desastre."'} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Descrição da Solução Proposta — O QUÊ será feito <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={() => setHelpType('campo_descricao')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
                 </div>
                 <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={4}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed" 
-                  placeholder="Descreva o que este projeto entregará" />
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
+                  placeholder={'Descreva a intervenção institucional que o projeto representa — ou seja, o que será feito para alcançar o objetivo declarado e atuar sobre as causas identificadas. Ex.: "Implantação de programa estruturado de educação comunitária em gestão de riscos, com metodologia replicável e integração com as redes de defesa civil municipal."'} />
               </div>
 
-              <div className="md:col-span-2">
+              <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <label className="block text-sm font-semibold text-gray-700">Indicador(es) de sucesso</label>
-                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver diretriz de preenchimento">
-                      <HelpCircle size={15} />
-                    </button>
                   </div>
                   <button type="button" onClick={() => setIndicadores([...indicadores, { nome: '', formula: '', fonte_dados: '', periodicidade: '', unidade_medida: '', responsavel: '', meta: '' }])}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
@@ -763,39 +800,60 @@ export default function NovoProjetoPage() {
                       <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Indicador {idx + 1}</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="md:col-span-2">
-                          <label className="text-xs text-gray-500 mb-0.5 block">Nome <span className="text-red-500">*</span></label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Nome <span className="text-red-500">*</span></label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_nome')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.nome} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, nome: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Identificação precisa do que está sendo medido" />
+                            className="input-field text-sm" placeholder='Ex.: "Percentual de moradores capacitados em autoproteção"' />
                         </div>
                         <div className="md:col-span-2">
-                          <label className="text-xs text-gray-500 mb-0.5 block">Fórmula de Cálculo</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Fórmula de Cálculo</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_formula')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.formula} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, formula: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Definição matemática exata de como o valor é obtido" />
+                            className="input-field text-sm" placeholder='Ex.: "(Nº capacitados ÷ total da área-alvo) × 100"' />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500 mb-0.5 block">Fonte de Dados</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Fonte de Dados</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_fonte')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.fonte_dados} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, fonte_dados: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="De onde virão as informações (sistemas, relatórios, pesquisas)" />
+                            className="input-field text-sm" placeholder='Ex.: "Lista de presença", "Sistema SISGEO"' />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500 mb-0.5 block">Periodicidade/Frequência</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Periodicidade/Frequência</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_periodicidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.periodicidade} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, periodicidade: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Com que frequência será medido (diário, mensal, anual)" />
+                            className="input-field text-sm" placeholder='Ex.: "Mensal", "Trimestral", "Ao final de cada entrega"' />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500 mb-0.5 block">Unidade de Medida</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Unidade de Medida</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_unidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.unidade_medida} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, unidade_medida: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Porcentagem, valor monetário, tempo, quantidade absoluta" />
+                            className="input-field text-sm" placeholder='Ex.: "Percentual (%)", "Número absoluto", "R$"' />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500 mb-0.5 block">Responsável</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Responsável</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_responsavel')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.responsavel} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, responsavel: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Quem é o proprietário do indicador e responsável pela ação sobre ele" />
+                            className="input-field text-sm" placeholder='Ex.: "Coordenador de capacitação do setor X"' />
                         </div>
                         <div className="md:col-span-2">
-                          <label className="text-xs text-gray-500 mb-0.5 block">Meta</label>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Meta</label>
+                            <button type="button" onClick={() => setHelpType('campo_ind_meta')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
                           <input type="text" value={ind.meta} onChange={e => setIndicadores(indicadores.map((item, i) => i === idx ? { ...item, meta: e.target.value } : item))}
-                            className="input-field text-sm" placeholder="Valor ou resultado esperado" />
+                            className="input-field text-sm" placeholder='Ex.: "Atingir 70% de moradores capacitados até dez/2026"' />
                         </div>
                       </div>
                     </div>
@@ -803,11 +861,16 @@ export default function NovoProjetoPage() {
                 </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Dependências com outros projetos</label>
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Dependências com outros projetos</label>
+                  <button type="button" onClick={() => setHelpType('campo_dependencias')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
+                    <HelpCircle size={15} />
+                  </button>
+                </div>
                 <textarea value={dependenciasProjetos} onChange={e => setDependenciasProjetos(e.target.value)} rows={2}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
-                  placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
+                  placeholder={'Descreva se este projeto depende de outro para ser executado, ou se outros projetos dependem dele. Ex.: "Este projeto depende da conclusão do Projeto X para ter acesso ao sistema Y"'} />
               </div>
             </div>
 

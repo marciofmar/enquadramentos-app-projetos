@@ -324,6 +324,7 @@ export default function ProjetoDetalhePage() {
     if (showNewEntregaForm) setShowNewEntregaForm(false)
     setEditForm({
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
+      causas: projeto.causas || '', consequencias_diretas: projeto.consequencias_diretas || '', objetivos: projeto.objetivos || '',
       responsavel_id: projeto.responsavel_id || '',
       data_inicio: projeto.data_inicio || '',
       dependencias_projetos: projeto.dependencias_projetos || '',
@@ -341,8 +342,8 @@ export default function ProjetoDetalhePage() {
     setSaving(true)
 
     // Validação de campos obrigatórios
-    if (!editForm.nome?.trim() || !editForm.descricao?.trim() || !editForm.problema_resolve?.trim()) {
-      alert('Preencha nome, descrição e problema que resolve.')
+    if (!editForm.nome?.trim() || !editForm.descricao?.trim() || !editForm.problema_resolve?.trim() || !editForm.causas?.trim() || !editForm.consequencias_diretas?.trim() || !editForm.objetivos?.trim()) {
+      alert('Preencha todos os campos obrigatórios: nome, problema, causas, consequências, objetivo e descrição da solução.')
       savingRef.current = false; setSaving(false); return
     }
     if (!editForm.setor_lider_id) {
@@ -382,6 +383,7 @@ export default function ProjetoDetalhePage() {
       }
       const dados = {
         nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
+        causas: editForm.causas, consequencias_diretas: editForm.consequencias_diretas, objetivos: editForm.objetivos,
         responsavel_id: editForm.responsavel_id || null,
         data_inicio: editForm.data_inicio || null,
         dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
@@ -397,6 +399,7 @@ export default function ProjetoDetalhePage() {
 
     const novosDados = {
       nome: editForm.nome, descricao: editForm.descricao, problema_resolve: editForm.problema_resolve,
+      causas: editForm.causas, consequencias_diretas: editForm.consequencias_diretas, objetivos: editForm.objetivos,
       responsavel_id: editForm.responsavel_id || null,
       data_inicio: editForm.data_inicio || null,
       dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
@@ -405,6 +408,7 @@ export default function ProjetoDetalhePage() {
     }
     const anterior = {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
+      causas: projeto.causas, consequencias_diretas: projeto.consequencias_diretas, objetivos: projeto.objetivos,
       responsavel_id: projeto.responsavel_id, data_inicio: projeto.data_inicio,
       dependencias_projetos: projeto.dependencias_projetos,
       tipo_acao: projeto.tipo_acao, setor_lider_id: projeto.setor_lider_id,
@@ -1647,30 +1651,61 @@ export default function ProjetoDetalhePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-blue-100/50">
+              <div className="space-y-6 pt-4 border-t border-blue-100/50">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Problema que soluciona — Por quê</label>
-                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Problema Identificado — POR QUÊ o projeto existe</label>
+                    <button type="button" onClick={() => setHelpType('campo_problema')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.problema_resolve} onChange={e => setEditForm({ ...editForm, problema_resolve: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4} placeholder="Qual problema concreto este projeto resolve?" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4}
+                    placeholder={'Descreva a situação atual que impacta negativamente os resultados do setor ou o cumprimento da missão institucional. Foque no problema em si — não em suas causas, não em como resolvê-lo. Ex.: "Comunidades em áreas de risco apresentam alta vulnerabilidade a desastres."'} />
                 </div>
-                
+
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição da solução proposta — O quê</label>
-                    <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Causas do Problema — O QUE origina essa situação</label>
+                    <button type="button" onClick={() => setHelpType('campo_causas')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <textarea value={editForm.causas || ''} onChange={e => setEditForm({ ...editForm, causas: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4}
+                    placeholder={'Liste os fatores que geram ou agravam o problema identificado. Separe as causas por ponto e vírgula ou em linhas distintas. Ex.: "Baixa percepção de risco pelos moradores; ausência de cultura de preparação individual; falta de canais acessíveis de informação sobre riscos locais."'} />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Consequências Diretas do Problema — O QUE acontece por causa dele</label>
+                    <button type="button" onClick={() => setHelpType('campo_consequencias')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <textarea value={editForm.consequencias_diretas || ''} onChange={e => setEditForm({ ...editForm, consequencias_diretas: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4}
+                    placeholder={'Descreva os impactos imediatos que decorrem diretamente do problema, sem depender de uma cadeia de eventos intermediários. Ex.: "Moradores permanecem em áreas de risco mesmo após emissão de alertas; famílias não adotam medidas básicas de autoproteção."'} />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Objetivo do Projeto — PARA QUÊ ele existe</label>
+                    <button type="button" onClick={() => setHelpType('campo_objetivo')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
+                  <textarea value={editForm.objetivos || ''} onChange={e => setEditForm({ ...editForm, objetivos: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4}
+                    placeholder={'Declare a transformação concreta que o projeto pretende alcançar ao atuar sobre as causas identificadas. Ex.: "Aumentar a percepção de risco em comunidades vulneráveis, reduzindo comportamentos que elevam sua exposição a situações de desastre."'} />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição da Solução Proposta — O QUÊ será feito</label>
+                    <button type="button" onClick={() => setHelpType('campo_descricao')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.descricao} onChange={e => setEditForm({ ...editForm, descricao: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4} placeholder="Descreva o que este projeto entregará" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={4}
+                    placeholder={'Descreva a intervenção institucional que o projeto representa — ou seja, o que será feito para alcançar o objetivo declarado e atuar sobre as causas identificadas. Ex.: "Implantação de programa estruturado de educação comunitária em gestão de riscos, com metodologia replicável e integração com as redes de defesa civil municipal."'} />
                 </div>
-                
-                <div className="md:col-span-2">
+
+                <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Indicador(es) de sucesso</label>
-                      <button type="button" onClick={openHelpModal} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                     </div>
                     <button type="button" onClick={() => setEditForm({ ...editForm, indicadores: [...(editForm.indicadores || []), { nome: '', formula: '', fonte_dados: '', periodicidade: '', unidade_medida: '', responsavel: '', meta: '' }] })}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
@@ -1690,39 +1725,60 @@ export default function ProjetoDetalhePage() {
                         <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Indicador {idx + 1}</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="md:col-span-2">
-                            <label className="text-xs text-gray-500 mb-0.5 block">Nome <span className="text-red-500">*</span></label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Nome <span className="text-red-500">*</span></label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_nome')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.nome || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, nome: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Identificação precisa do que está sendo medido" />
+                              className="input-field text-sm" placeholder='Ex.: "Percentual de moradores capacitados em autoproteção"' />
                           </div>
                           <div className="md:col-span-2">
-                            <label className="text-xs text-gray-500 mb-0.5 block">Fórmula de Cálculo</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Fórmula de Cálculo</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_formula')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.formula || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, formula: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Definição matemática exata de como o valor é obtido" />
+                              className="input-field text-sm" placeholder='Ex.: "(Nº capacitados ÷ total da área-alvo) × 100"' />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-500 mb-0.5 block">Fonte de Dados</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Fonte de Dados</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_fonte')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.fonte_dados || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, fonte_dados: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="De onde virão as informações" />
+                              className="input-field text-sm" placeholder='Ex.: "Lista de presença", "Sistema SISGEO"' />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-500 mb-0.5 block">Periodicidade/Frequência</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Periodicidade/Frequência</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_periodicidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.periodicidade || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, periodicidade: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Com que frequência será medido" />
+                              className="input-field text-sm" placeholder='Ex.: "Mensal", "Trimestral", "Ao final de cada entrega"' />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-500 mb-0.5 block">Unidade de Medida</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Unidade de Medida</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_unidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.unidade_medida || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, unidade_medida: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Porcentagem, valor monetário, tempo, quantidade absoluta" />
+                              className="input-field text-sm" placeholder='Ex.: "Percentual (%)", "Número absoluto", "R$"' />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-500 mb-0.5 block">Responsável</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Responsável</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_responsavel')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.responsavel || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, responsavel: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Quem é o proprietário do indicador" />
+                              className="input-field text-sm" placeholder='Ex.: "Coordenador de capacitação do setor X"' />
                           </div>
                           <div className="md:col-span-2">
-                            <label className="text-xs text-gray-500 mb-0.5 block">Meta</label>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Meta</label>
+                              <button type="button" onClick={() => setHelpType('campo_ind_meta')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
                             <input type="text" value={ind.meta || ''} onChange={e => setEditForm({ ...editForm, indicadores: editForm.indicadores.map((item: any, i: number) => i === idx ? { ...item, meta: e.target.value } : item) })}
-                              className="input-field text-sm" placeholder="Valor ou resultado esperado" />
+                              className="input-field text-sm" placeholder='Ex.: "Atingir 70% de moradores capacitados até dez/2026"' />
                           </div>
                         </div>
                       </div>
@@ -1730,10 +1786,14 @@ export default function ProjetoDetalhePage() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Dependências com outros projetos</label>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dependências com outros projetos</label>
+                    <button type="button" onClick={() => setHelpType('campo_dependencias')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
+                  </div>
                   <textarea value={editForm.dependencias_projetos || ''} onChange={e => setEditForm({ ...editForm, dependencias_projetos: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2} placeholder="Ex: Projeto X depende desse projeto ou Esse projeto depende do projeto X" />
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
+                    placeholder={'Descreva se este projeto depende de outro para ser executado, ou se outros projetos dependem dele. Ex.: "Este projeto depende da conclusão do Projeto X para ter acesso ao sistema Y"'} />
                 </div>
               </div>
 
@@ -1834,9 +1894,9 @@ export default function ProjetoDetalhePage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="space-y-4 mb-4">
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema que soluciona — Por quê</h3>
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-orange-500" /> Problema Identificado — POR QUÊ o projeto existe</h3>
                   <ul className="space-y-1.5 mt-2">
                     {projeto.problema_resolve?.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
                       <li key={i} className="flex items-start gap-2">
@@ -1846,9 +1906,44 @@ export default function ProjetoDetalhePage() {
                     ))}
                   </ul>
                 </div>
-                
+
+                {projeto.causas && (
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-yellow-500" /> Causas do Problema — O QUE origina essa situação</h3>
+                    <ul className="space-y-1.5 mt-2">
+                      {projeto.causas.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-yellow-500 font-bold mt-0.5">•</span>
+                          <span className="text-gray-700 leading-relaxed">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {projeto.consequencias_diretas && (
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><AlertTriangle size={15} className="text-red-500" /> Consequências Diretas do Problema</h3>
+                    <ul className="space-y-1.5 mt-2">
+                      {projeto.consequencias_diretas.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-red-500 font-bold mt-0.5">•</span>
+                          <span className="text-gray-700 leading-relaxed">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {projeto.objetivos && (
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-green-500" /> Objetivo do Projeto — PARA QUÊ ele existe</h3>
+                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.objetivos}</p>
+                  </div>
+                )}
+
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-blue-500" /> Descrição da solução proposta — O quê</h3>
+                  <h3 className="font-bold text-gray-800 flex items-center gap-1.5 mb-1.5"><CheckCircle size={15} className="text-blue-500" /> Descrição da Solução Proposta — O QUÊ será feito</h3>
                   <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{projeto.descricao}</p>
                 </div>
               </div>
