@@ -49,11 +49,11 @@ export default function ProjectGuidelineModal({ isOpen, onClose, showCheckbox }:
 
             <div className="bg-orange-50 rounded-lg p-5 my-6 border border-orange-100">
               <ol className="list-decimal pl-5 space-y-3 font-medium text-orange-900">
-                <li>Problema Identificado — POR QUÊ o projeto existe</li>
+                <li>Problema Identificado — POR QUE o projeto existe</li>
                 <li>Causas do Problema — O QUE origina essa situação</li>
                 <li>Consequências Diretas do Problema — O QUE acontece por causa dele</li>
-                <li>Objetivo do Projeto — PARA QUÊ ele existe</li>
-                <li>Descrição da Solução Proposta — O QUÊ será feito</li>
+                <li>Objetivo do Projeto — PARA QUE ele existe</li>
+                <li>Descrição da Solução Proposta — O QUE será feito</li>
                 <li>Indicador(es) de sucesso - Como saberemos que funcionou?</li>
                 <li>Dependências com outros projetos</li>
               </ol>
