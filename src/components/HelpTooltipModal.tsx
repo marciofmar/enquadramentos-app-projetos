@@ -9,6 +9,7 @@ export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes'
   | 'campo_ind_nome' | 'campo_ind_formula' | 'campo_ind_fonte'
   | 'campo_ind_periodicidade' | 'campo_ind_unidade' | 'campo_ind_responsavel'
   | 'campo_ind_meta' | 'campo_dependencias'
+  | 'campo_risco_natureza' | 'campo_risco_probabilidade' | 'campo_risco_medida'
   | null
 
 interface Props {
@@ -342,18 +343,91 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
       )
     },
     campo_dependencias: {
-      title: 'Dependências com outros projetos',
+      title: 'Dependências Críticas do Projeto',
       body: (
         <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
           <p>
-            Dependências não mapeadas são uma das principais causas de atraso em projetos.
+            Dependências não mapeadas são uma das principais causas de atraso em projetos. Registre aqui <span className="font-bold">todas as dependências críticas</span> que podem afetar o andamento do projeto.
           </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Tipos de dependências a considerar:</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><span className="font-bold">Dependências de entrada</span> — o que este projeto precisa receber de outros projetos, órgãos ou processos externos para avançar.</li>
+              <li><span className="font-bold">Dependências de saída</span> — o que outros projetos ou processos aguardam deste projeto para prosseguirem.</li>
+              <li><span className="font-bold">Dependências orçamentárias</span> — aprovações de crédito, liberação de empenho, processos licitatórios.</li>
+              <li><span className="font-bold">Dependências normativas</span> — publicações em Diário Oficial, autorizações legais, pareceres jurídicos.</li>
+              <li><span className="font-bold">Dependências de recursos</span> — disponibilidade de pessoal, equipamentos, infraestrutura ou sistemas.</li>
+              <li><span className="font-bold">Dependências externas</span> — decisões de outros órgãos, fornecedores, parceiros ou instâncias superiores.</li>
+            </ul>
+          </div>
           <p>
-            Registre tanto <span className="font-bold">dependências de entrada</span> — o que este projeto precisa receber de outros — quanto <span className="font-bold">dependências de saída</span> — o que outros projetos aguardam deste.
+            Esse mapeamento permite que o Gabinete de Projetos identifique riscos de bloqueio antes que eles ocorram e planeje reuniões com os setores e órgãos envolvidos.
           </p>
+        </div>
+      )
+    },
+    campo_risco_natureza: {
+      title: 'Natureza do Risco — O que pode acontecer',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
           <p>
-            Isso permite que o Gabinete de Projetos identifique riscos de bloqueio antes que eles ocorram e planeje reuniões com os setores e órgãos envolvidos.
+            Descreva o <span className="font-bold">evento ou condição incerta</span> que, caso se concretize, pode impactar negativamente o projeto — seja em prazo, custo, escopo ou qualidade das entregas.
           </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Exemplos:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Indisponibilidade de servidores capacitados para execução das atividades de campo</li>
+              <li>Atraso na liberação orçamentária para aquisição de equipamentos</li>
+              <li>Mudança de prioridade institucional que reduza o apoio ao projeto</li>
+              <li>Falha no sistema de informação utilizado como base de dados</li>
+            </ul>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>Evite descrições vagas como &quot;problemas de comunicação&quot; ou &quot;falta de recursos&quot;. Seja específico sobre <span className="font-bold">o que</span> pode acontecer e <span className="font-bold">em que contexto</span>.</p>
+          </div>
+        </div>
+      )
+    },
+    campo_risco_probabilidade: {
+      title: 'Probabilidade de Ocorrência',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Avalie a <span className="font-bold">chance de o risco se concretizar</span>, considerando o histórico, o contexto atual e as condições do projeto.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Escala de referência:</p>
+            <ul className="space-y-2">
+              <li><span className="font-bold text-green-700">Baixa</span> — O evento é possível, mas improvável nas condições atuais. Não há histórico recorrente nem sinais de que possa ocorrer em breve.</li>
+              <li><span className="font-bold text-yellow-700">Média</span> — O evento já ocorreu antes em contextos semelhantes ou há sinais de que as condições estão propícias para sua ocorrência.</li>
+              <li><span className="font-bold text-red-700">Alta</span> — O evento é provável, com indícios concretos ou histórico frequente. Sem ação preventiva, é esperado que ocorra.</li>
+            </ul>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
+            <p>A probabilidade pode mudar ao longo do projeto. Reavalie periodicamente, especialmente quando houver mudanças no contexto ou nas condições iniciais.</p>
+          </div>
+        </div>
+      )
+    },
+    campo_risco_medida: {
+      title: 'Medida de Resposta',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Descreva a <span className="font-bold">ação concreta</span> que será adotada para reduzir, contornar ou mitigar os efeitos do risco, caso ele se concretize — ou para evitar que ele ocorra.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Tipos de resposta:</p>
+            <ul className="space-y-2">
+              <li><span className="font-bold">Evitar</span> — Alterar o plano do projeto para eliminar a condição que gera o risco.</li>
+              <li><span className="font-bold">Mitigar</span> — Adotar ações antecipadas para reduzir a probabilidade ou o impacto do risco.</li>
+              <li><span className="font-bold">Transferir</span> — Atribuir a gestão do risco a um terceiro (outro órgão, fornecedor, parceiro).</li>
+              <li><span className="font-bold">Aceitar</span> — Reconhecer o risco e monitorá-lo, preparando um plano de contingência caso se concretize.</li>
+            </ul>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>A medida de resposta deve ser <span className="font-bold">viável e proporcional</span> ao risco. Evite medidas genéricas como &quot;acompanhar o andamento&quot; — descreva o que será feito concretamente.</p>
+          </div>
         </div>
       )
     },

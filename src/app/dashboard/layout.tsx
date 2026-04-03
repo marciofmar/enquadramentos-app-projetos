@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen, MessageSquare } from 'lucide-react'
 import ManualModal from '@/components/ManualModal'
 import type { Profile } from '@/lib/types'
 
@@ -16,6 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [urgentProjectIds, setUrgentProjectIds] = useState<number[]>([])
   const [alertas, setAlertas] = useState<any[]>([])
   const [alertasExpanded, setAlertasExpanded] = useState(false)
+  const [unreadMessages, setUnreadMessages] = useState(0)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualTooltip, setManualTooltip] = useState(false)
   const router = useRouter()
@@ -77,6 +78,56 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .eq('lido', false)
           .order('created_at', { ascending: false })
         if (alertasData) setAlertas(alertasData)
+
+        // Fetch unread project messages for this user
+        try {
+          const isAdmMst = data.role === 'admin' || data.role === 'master'
+          let totalUnread = 0
+
+          if (isAdmMst) {
+            // Admin/Master: all messages not read by them
+            const { data: allMsgs } = await supabase
+              .from('mensagens_projeto')
+              .select('id')
+              .neq('autor_id', data.id)
+
+            if (allMsgs && allMsgs.length > 0) {
+              const { data: myReads } = await supabase
+                .from('mensagem_leituras')
+                .select('mensagem_id')
+                .eq('usuario_id', data.id)
+
+              const readSet = new Set((myReads || []).map((r: any) => r.mensagem_id))
+              totalUnread = allMsgs.filter(m => !readSet.has(m.id)).length
+            }
+          } else if (data.setor_id) {
+            // Other users: messages addressed to their sector, not read by them
+            const { data: myDests } = await supabase
+              .from('mensagem_destinatarios')
+              .select('mensagem_id, mensagens_projeto!inner(id, autor_id)')
+              .eq('setor_id', data.setor_id)
+
+            if (myDests && myDests.length > 0) {
+              const relevantMsgIds = myDests
+                .filter((d: any) => d.mensagens_projeto?.autor_id !== data.id)
+                .map((d: any) => d.mensagem_id)
+
+              if (relevantMsgIds.length > 0) {
+                const { data: myReads } = await supabase
+                  .from('mensagem_leituras')
+                  .select('mensagem_id')
+                  .eq('usuario_id', data.id)
+                  .in('mensagem_id', relevantMsgIds)
+
+                const readSet = new Set((myReads || []).map((r: any) => r.mensagem_id))
+                totalUnread = relevantMsgIds.filter((id: number) => !readSet.has(id)).length
+              }
+            }
+          }
+          setUnreadMessages(totalUnread)
+        } catch (e) {
+          // Silently fail if messaging tables don't exist yet
+        }
 
         // Guarda: se solicitante, redirecionar para /pendente
         if (data.role === 'solicitante') {
@@ -208,6 +259,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <span className="hidden sm:inline">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
                   </button>
                 </div>
+              )}
+
+              {unreadMessages > 0 && (
+                <button onClick={() => router.push('/dashboard/projetos')}
+                  className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                  title={`${unreadMessages} mensagem(ns) não lida(s)`}>
+                  <MessageSquare size={14} />
+                  <span className="hidden sm:inline">{unreadMessages} mensagem(ns)</span>
+                  <span className="sm:hidden bg-blue-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{unreadMessages}</span>
+                </button>
               )}
 
               <button onClick={() => router.push('/dashboard/perfil')}

@@ -11,6 +11,7 @@ import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
+import ProjetoMensagens from '@/components/ProjetoMensagens'
 import type { Profile } from '@/lib/types'
 
 const QUINZENAS = (() => {
@@ -82,6 +83,7 @@ export default function ProjetoDetalhePage() {
   const [masterIds, setMasterIds] = useState<string[]>([])
   const [showGestorModal, setShowGestorModal] = useState<false | ('gestor' | 'usuario')[]>(false)
   const [indicadores, setIndicadores] = useState<any[]>([])
+  const [riscos, setRiscos] = useState<any[]>([])
 
   const savingRef = useRef(false)
 
@@ -131,7 +133,7 @@ export default function ProjetoDetalhePage() {
     if (a) setAcoes(a)
 
     // Carregar IDs dos masters para enviar alertas
-    const { data: mastersData } = await supabase.from('profiles').select('id').eq('role', 'master')
+    const { data: mastersData } = await supabase.from('profiles').select('id, setor_id').in('role', ['master', 'admin'])
     if (mastersData) setMasterIds(mastersData.map((m: any) => m.id))
 
     const { data: proj } = await supabase.from('projetos')
@@ -171,6 +173,10 @@ export default function ProjetoDetalhePage() {
       // Carregar indicadores do projeto
       const { data: indData } = await supabase.from('indicadores').select('*').eq('projeto_id', id).order('id')
       if (indData) setIndicadores(indData)
+
+      // Carregar riscos do projeto
+      const { data: riscosData } = await supabase.from('riscos').select('*').eq('projeto_id', id).order('id')
+      if (riscosData) setRiscos(riscosData)
 
       // Carregar solicitações do projeto
       const { data: sols } = await supabase.from('solicitacoes_alteracao')
@@ -331,7 +337,8 @@ export default function ProjetoDetalhePage() {
       tipo_acao: projeto.tipo_acao || [],
       setor_lider_id: projeto.setor_lider_id,
       acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || [],
-      indicadores: indicadores.map(i => ({ ...i }))
+      indicadores: indicadores.map(i => ({ ...i })),
+      riscos: riscos.map(r => ({ ...r }))
     })
     setEditingProjeto(true)
   }
@@ -391,6 +398,7 @@ export default function ProjetoDetalhePage() {
         setor_lider_id: editForm.setor_lider_id,
         acoes: editForm.acoes,
         indicadores: editForm.indicadores,
+        riscos: editForm.riscos,
       }
       const ok = await criarSolicitacao('projeto', projeto.id, projeto.nome, 'edicao', dados)
       if (ok) { setEditingProjeto(false); loadAll() }
@@ -435,6 +443,21 @@ export default function ProjetoDetalhePage() {
       await supabase.from('indicadores').insert(indicadoresComDados.map((i: any) => ({
         projeto_id: projeto.id, nome: i.nome || '', formula: i.formula || '', fonte_dados: i.fonte_dados || '',
         periodicidade: i.periodicidade || '', unidade_medida: i.unidade_medida || '', responsavel: i.responsavel || '', meta: i.meta || ''
+      })))
+    }
+
+    // Validate risco natureza required
+    const riscosComDados = (editForm.riscos || []).filter((r: any) => r.natureza || r.probabilidade || r.medida_resposta)
+    if (riscosComDados.some((r: any) => !r.natureza?.trim())) {
+      alert('Preencha o campo "Natureza" de todos os riscos.')
+      savingRef.current = false; setSaving(false); return
+    }
+
+    // Save riscos: delete all then re-insert
+    await supabase.from('riscos').delete().eq('projeto_id', projeto.id)
+    if (riscosComDados.length > 0) {
+      await supabase.from('riscos').insert(riscosComDados.map((r: any) => ({
+        projeto_id: projeto.id, natureza: r.natureza || '', probabilidade: r.probabilidade || '', medida_resposta: r.medida_resposta || ''
       })))
     }
 
@@ -1787,13 +1810,72 @@ export default function ProjetoDetalhePage() {
                 </div>
 
                 <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Matriz de Riscos</label>
+                    </div>
+                    <button type="button" onClick={() => setEditForm({ ...editForm, riscos: [...(editForm.riscos || []), { natureza: '', probabilidade: '', medida_resposta: '' }] })}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+                      <Plus size={14} /> Risco
+                    </button>
+                  </div>
+                  {(!editForm.riscos || editForm.riscos.length === 0) && (
+                    <p className="text-xs text-gray-400 italic">Nenhum risco adicionado. Clique em &quot;+ Risco&quot; para adicionar.</p>
+                  )}
+                  <div className="space-y-3">
+                    {(editForm.riscos || []).map((risco: any, idx: number) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 relative">
+                        <button type="button" onClick={() => setEditForm({ ...editForm, riscos: editForm.riscos.filter((_: any, i: number) => i !== idx) })}
+                          className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Remover risco">
+                          <Trash2 size={16} />
+                        </button>
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Risco {idx + 1}</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="md:col-span-2">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Natureza — O que pode acontecer <span className="text-red-500">*</span></label>
+                              <button type="button" onClick={() => setHelpType('campo_risco_natureza')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
+                            <textarea value={risco.natureza || ''} onChange={e => setEditForm({ ...editForm, riscos: editForm.riscos.map((item: any, i: number) => i === idx ? { ...item, natureza: e.target.value } : item) })}
+                              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
+                              placeholder='Ex.: "Indisponibilidade de servidores capacitados para as atividades de campo"' />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Probabilidade</label>
+                              <button type="button" onClick={() => setHelpType('campo_risco_probabilidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
+                            <select value={risco.probabilidade || ''} onChange={e => setEditForm({ ...editForm, riscos: editForm.riscos.map((item: any, i: number) => i === idx ? { ...item, probabilidade: e.target.value } : item) })}
+                              className="input-field text-sm">
+                              <option value="">Selecione...</option>
+                              <option value="baixa">Baixa</option>
+                              <option value="media">Média</option>
+                              <option value="alta">Alta</option>
+                            </select>
+                          </div>
+                          <div className="md:col-span-2">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Medida de Resposta — Como reduzir, contornar ou mitigar</label>
+                              <button type="button" onClick={() => setHelpType('campo_risco_medida')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
+                            <textarea value={risco.medida_resposta || ''} onChange={e => setEditForm({ ...editForm, riscos: editForm.riscos.map((item: any, i: number) => i === idx ? { ...item, medida_resposta: e.target.value } : item) })}
+                              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
+                              placeholder='Ex.: "Identificar e capacitar servidores de outros setores como alternativa; firmar acordo com órgão parceiro"' />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dependências com outros projetos</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dependências críticas do projeto</label>
                     <button type="button" onClick={() => setHelpType('campo_dependencias')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={13} /></button>
                   </div>
                   <textarea value={editForm.dependencias_projetos || ''} onChange={e => setEditForm({ ...editForm, dependencias_projetos: e.target.value })}
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
-                    placeholder={'Descreva se este projeto depende de outro para ser executado, ou se outros projetos dependem dele. Ex.: "Este projeto depende da conclusão do Projeto X para ter acesso ao sistema Y"'} />
+                    placeholder={'Descreva dependências críticas deste projeto: outros projetos, aprovações orçamentárias, decisões normativas, disponibilidade de recursos, fornecedores externos etc. Ex.: "Depende da conclusão do Projeto X para acesso ao sistema Y; aguarda liberação de crédito orçamentário para aquisição de equipamentos"'} />
                 </div>
               </div>
 
@@ -1988,9 +2070,37 @@ export default function ProjetoDetalhePage() {
                 </div>
               )}
 
+              {riscos.length > 0 && (
+                <div className="mb-5 bg-amber-50/50 rounded-xl p-4 border border-amber-100 text-sm">
+                  <h3 className="font-bold text-amber-800 flex items-center gap-1.5 mb-2">⚠️ Matriz de Riscos</h3>
+                  <div className="space-y-3">
+                    {riscos.map((risco: any, idx: number) => (
+                      <div key={risco.id || idx} className="bg-white/70 rounded-lg p-3 border border-amber-100">
+                        {risco.natureza && <div className="font-semibold text-gray-800 mb-1">{risco.natureza}</div>}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          {risco.probabilidade && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500 text-xs">Probabilidade:</span>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                risco.probabilidade === 'alta' ? 'bg-red-100 text-red-700' :
+                                risco.probabilidade === 'media' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {risco.probabilidade === 'media' ? 'Média' : risco.probabilidade.charAt(0).toUpperCase() + risco.probabilidade.slice(1)}
+                              </span>
+                            </div>
+                          )}
+                          {risco.medida_resposta && <div><span className="text-gray-500 text-xs">Medida de resposta:</span> <span className="text-gray-700">{risco.medida_resposta}</span></div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {projeto.dependencias_projetos && (
                 <div className="mb-5 bg-purple-50/50 rounded-xl p-4 border border-purple-100 text-sm">
-                  <h3 className="font-bold text-purple-800 flex items-center gap-1.5 mb-1.5">🔗 Dependências com outros projetos</h3>
+                  <h3 className="font-bold text-purple-800 flex items-center gap-1.5 mb-1.5">🔗 Dependências críticas do projeto</h3>
                   <ul className="space-y-1.5 mt-2">
                     {projeto.dependencias_projetos.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => (
                       <li key={i} className="flex items-start gap-2">
@@ -2037,6 +2147,66 @@ export default function ProjetoDetalhePage() {
           )}
         </div>
       </div>
+
+      {/* Mensagens do Projeto */}
+      {profile && projeto && !editingProjeto && (() => {
+        // Compute setores elegíveis para mensagens
+        const setorIdsElegiveis = new Set<number>()
+        // Setor líder
+        if (projeto.setor_lider_id) setorIdsElegiveis.add(projeto.setor_lider_id)
+        // Setores das entregas
+        for (const e of (projeto.entregas || [])) {
+          if (e.orgao_responsavel_setor_id) setorIdsElegiveis.add(e.orgao_responsavel_setor_id)
+          // Participantes de entrega
+          for (const p of (e.entrega_participantes || [])) {
+            if (p.setor_id) setorIdsElegiveis.add(p.setor_id)
+          }
+          // Atividades
+          for (const a of (e.atividades || [])) {
+            for (const ap of (a.atividade_participantes || [])) {
+              if (ap.setor_id) setorIdsElegiveis.add(ap.setor_id)
+            }
+          }
+        }
+        // Setores dos responsáveis (via profiles)
+        const userIdsEnvolvidos = new Set<string>()
+        if (projeto.responsavel_id) userIdsEnvolvidos.add(projeto.responsavel_id)
+        for (const e of (projeto.entregas || [])) {
+          if (e.responsavel_entrega_id) userIdsEnvolvidos.add(e.responsavel_entrega_id)
+          for (const a of (e.atividades || [])) {
+            if (a.responsavel_atividade_id) userIdsEnvolvidos.add(a.responsavel_atividade_id)
+            for (const ap of (a.atividade_participantes || [])) {
+              if (ap.user_id) userIdsEnvolvidos.add(ap.user_id)
+            }
+          }
+        }
+        // Adicionar setores dos usuários envolvidos
+        Array.from(userIdsEnvolvidos).forEach(uid => {
+          const u = eligibleUsers.find(eu => eu.id === uid)
+          if (u?.setor_id) setorIdsElegiveis.add(u.setor_id)
+        })
+        // Gabinete de Projetos (masters/admins) sempre é destinatário possível
+        eligibleUsers.filter(u => u.role === 'master' || u.role === 'admin').forEach(u => {
+          if (u.setor_id) setorIdsElegiveis.add(u.setor_id)
+        })
+
+        const setoresElegiveisArr = setores.filter((s: any) => setorIdsElegiveis.has(s.id))
+
+        // Check if current user can send
+        const isAdmMst = profile.role === 'admin' || profile.role === 'master'
+        const meuSetorElegivel = profile.setor_id ? setorIdsElegiveis.has(profile.setor_id) : false
+        const euEnvolvido = userIdsEnvolvidos.has(profile.id)
+        const canSend = isAdmMst || (profile.role === 'gestor' && (meuSetorElegivel || euEnvolvido))
+
+        return (
+          <ProjetoMensagens
+            projetoId={projeto.id}
+            profile={profile}
+            setoresElegiveis={setoresElegiveisArr}
+            canSendMessage={canSend}
+          />
+        )
+      })()}
 
       {/* Gantt Chart */}
       {projeto.entregas?.some((e: any) => e.data_final_prevista) && (
