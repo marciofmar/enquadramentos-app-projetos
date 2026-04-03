@@ -1,19 +1,21 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: 'SIGPLAN | SEDEC-RJ',
   description: 'Sistema de Governança e Planejamento — Secretaria de Estado de Defesa Civil do Rio de Janeiro',
   manifest: '/manifest.json',
-  themeColor: '#E97724',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'SIGPLAN',
   },
-  other: {
-    'mobile-web-app-capable': 'yes',
-  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#E97724',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
