@@ -1,0 +1,25 @@
+{
+  "name": "SIGPLAN — SEDEC-RJ",
+  "short_name": "SIGPLAN",
+  "description": "Sistema de Governança e Planejamento — Secretaria de Estado de Defesa Civil do Rio de Janeiro",
+  "start_url": "/dashboard/projetos",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#E97724",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

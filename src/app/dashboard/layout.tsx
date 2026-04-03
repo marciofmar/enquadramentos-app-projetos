@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
 import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen, MessageSquare } from 'lucide-react'
 import ManualModal from '@/components/ManualModal'
+import PushNotificationManager from '@/components/PushNotificationManager'
 import type { Profile } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -270,6 +271,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <span className="sm:hidden bg-blue-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{unreadMessages}</span>
                 </button>
               )}
+
+              <PushNotificationManager />
 
               <button onClick={() => router.push('/dashboard/perfil')}
                 className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity" title="Meu Perfil">

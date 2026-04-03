@@ -13,6 +13,7 @@ import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
 import ProjetoMensagens from '@/components/ProjetoMensagens'
 import type { Profile } from '@/lib/types'
+import { sendPushForAlerts } from '@/lib/push-client'
 
 const QUINZENAS = (() => {
   const opts: { value: string; label: string }[] = []
@@ -576,6 +577,7 @@ export default function ProjetoDetalhePage() {
     })
     if (alertasEdit.length > 0) {
       await supabase.from('alertas').insert(alertasEdit)
+      sendPushForAlerts(alertasEdit)
     }
 
     setEditingProjeto(false); savingRef.current = false; setSaving(false); loadAll()
@@ -900,6 +902,7 @@ export default function ProjetoDetalhePage() {
     })
     if (alertasEntrega.length > 0) {
       await supabase.from('alertas').insert(alertasEntrega)
+      sendPushForAlerts(alertasEntrega)
     }
 
     setEditingEntrega(null); savingRef.current = false; setSaving(false); loadAll()
@@ -976,6 +979,7 @@ export default function ProjetoDetalhePage() {
     })
     if (alertasDelEntrega.length > 0) {
       await supabase.from('alertas').insert(alertasDelEntrega)
+      sendPushForAlerts(alertasDelEntrega)
     }
 
     await supabase.from('entregas').delete().eq('id', e.id)
@@ -1106,6 +1110,7 @@ export default function ProjetoDetalhePage() {
     })
     if (alertasNewEntrega.length > 0) {
       await supabase.from('alertas').insert(alertasNewEntrega)
+      sendPushForAlerts(alertasNewEntrega)
     }
 
     setShowNewEntregaForm(false)
@@ -1429,6 +1434,7 @@ export default function ProjetoDetalhePage() {
     })
     if (alertasAtiv.length > 0) {
       await supabase.from('alertas').insert(alertasAtiv)
+      sendPushForAlerts(alertasAtiv)
     }
 
     setEditingAtividade(null); savingRef.current = false; setSaving(false); loadAll()
@@ -1472,7 +1478,10 @@ export default function ProjetoDetalhePage() {
       tipo: 'exclusao_atividade', entidade: 'atividade', entidade_id: a.id, entidade_nome: a.nome,
       projeto_id: projeto.id, projeto_nome: projeto.nome, descricao: `Atividade "${a.nome}" foi excluída por ${profile!.nome}`
     })
-    if (alertasDelAtiv.length > 0) await supabase.from('alertas').insert(alertasDelAtiv)
+    if (alertasDelAtiv.length > 0) {
+      await supabase.from('alertas').insert(alertasDelAtiv)
+      sendPushForAlerts(alertasDelAtiv)
+    }
 
     await supabase.from('atividades').delete().eq('id', a.id)
     loadAll()
