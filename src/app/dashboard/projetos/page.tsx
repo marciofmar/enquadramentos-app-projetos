@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users, HelpCircle, Info, Pause } from 'lucide-react'
+import { Plus, Filter, X, Search, FolderKanban, Clock, AlertTriangle, CheckCircle, CheckCircle2, XCircle, ChevronRight, Building2, Activity, ClipboardList, ChevronDown, ChevronUp, AlertCircle, Crown, Package, Wrench, Users, HelpCircle, Info, Pause, MessageSquare } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import HelpTooltipModal, { type HelpType } from '@/components/HelpTooltipModal'
@@ -36,6 +36,7 @@ interface ProjetoCard {
   tie_entrega_inicio: string | null
   tie_atividade: string | null
   tie_entrega_final: string | null
+  unread_messages: number
 }
 
 const PONT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
@@ -322,8 +323,59 @@ export default function ProjetosPage() {
           tie_entrega_inicio: minEntregaInicio,
           tie_atividade: minAtivData,
           tie_entrega_final: minEntregaFim,
+          unread_messages: 0,
         }
       })
+
+      // Load unread message counts per project
+      try {
+        if (user) {
+          const { data: meuPerfil } = await supabase.from('profiles').select('id, role, setor_id').eq('id', user.id).single()
+          if (meuPerfil) {
+            const isAdmMst = meuPerfil.role === 'admin' || meuPerfil.role === 'master'
+
+            // Buscar todas as mensagens
+            const { data: allMsgs } = await supabase
+              .from('mensagens_projeto')
+              .select('id, projeto_id, autor_id')
+
+            if (allMsgs && allMsgs.length > 0) {
+              // Buscar leituras do usuário atual
+              const { data: myReads } = await supabase
+                .from('mensagem_leituras')
+                .select('mensagem_id')
+                .eq('usuario_id', meuPerfil.id)
+              const readSet = new Set((myReads || []).map((r: any) => r.mensagem_id))
+
+              // Buscar destinatários relevantes ao setor do usuário (para não-admin)
+              let myDestMsgIds: Set<number> | null = null
+              if (!isAdmMst && meuPerfil.setor_id) {
+                const { data: myDests } = await supabase
+                  .from('mensagem_destinatarios')
+                  .select('mensagem_id')
+                  .eq('setor_id', meuPerfil.setor_id)
+                myDestMsgIds = new Set((myDests || []).map((d: any) => d.mensagem_id))
+              }
+
+              const unreadByProject: Record<number, number> = {}
+              allMsgs.forEach((m: any) => {
+                // Ignorar próprias mensagens
+                if (m.autor_id === meuPerfil.id) return
+                // Já lida? Ignorar
+                if (readSet.has(m.id)) return
+                // Se não é admin/master, checar se é destinatário
+                if (!isAdmMst && myDestMsgIds && !myDestMsgIds.has(m.id)) return
+                // Contar
+                unreadByProject[m.projeto_id] = (unreadByProject[m.projeto_id] || 0) + 1
+              })
+              cards.forEach(c => { c.unread_messages = unreadByProject[c.id] || 0 })
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao carregar mensagens não lidas:', e)
+      }
+
       setProjetos(cards)
     }
 
@@ -772,6 +824,11 @@ export default function ProjetosPage() {
                           <AlertCircle size={9} /> Prazo
                         </span>
                       )}
+                      {p.unread_messages > 0 && (
+                        <span className="shrink-0 flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500 text-white animate-pulse">
+                          <MessageSquare size={9} /> {p.unread_messages}
+                        </span>
+                      )}
                     </div>
                     <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full ${pont.bg} ${pont.color}`}>
                       <PontIcon size={9} /> {pont.label}
@@ -833,6 +890,11 @@ export default function ProjetosPage() {
                       {p.solicitacoes_pendentes > 0 && (
                         <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                           <ClipboardList size={10} /> {p.solicitacoes_pendentes} solicit.
+                        </span>
+                      )}
+                      {p.unread_messages > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 animate-pulse">
+                          <MessageSquare size={10} /> {p.unread_messages} msg não lida{p.unread_messages > 1 ? 's' : ''}
                         </span>
                       )}
                     </div>

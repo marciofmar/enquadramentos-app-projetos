@@ -120,7 +120,8 @@
       "Bash(grep -r configs[ C:Usersmarciprojetosenquadramentos-app-projetossrcappdashboardprojetos)",
       "Bash(find C:Usersmarciprojetosenquadramentos-app-projetos -maxdepth 3 -type f \\\\\\(-name *.md -o -name README* \\\\\\) ! -path */node_modules/* ! -path */.next/*)",
       "Bash(ls next.config.*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(node \"C:\\\\Users\\\\marci\\\\Downloads\\\\converter-acoes.js\")"
     ]
   }
 }

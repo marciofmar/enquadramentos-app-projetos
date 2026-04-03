@@ -26,7 +26,34 @@ Cada projeto tem um **setor líder** e um **líder** (pessoa responsável pelo p
 
 Cada projeto pode ter **nenhum ou múltiplos indicadores**. Cada indicador é composto por 7 campos estruturados: nome (obrigatório), fórmula, fonte de dados, periodicidade, unidade de medida, responsável e meta.
 
-### 1.4 Status de projetos
+### 1.4 Matriz de Riscos
+
+Cada projeto pode ter **nenhum ou múltiplos riscos** cadastrados em sua matriz de riscos. Cada risco é composto por 3 campos:
+
+| Campo | Descrição | Obrigatoriedade |
+|-------|-----------|-----------------|
+| **Natureza** | O que pode acontecer — evento ou condição incerta que pode afetar o projeto | Obrigatório (se qualquer campo for preenchido) |
+| **Probabilidade** | Chance de ocorrência: **Baixa**, **Média** ou **Alta** | Opcional |
+| **Medida de Resposta** | Ação concreta para reduzir, contornar ou mitigar os efeitos do risco | Opcional |
+
+O formato é idêntico ao de indicadores: o usuário pode adicionar quantos riscos achar necessário usando o botão "+ Risco", e cada risco pode ser removido individualmente. Se qualquer campo de um risco for preenchido, o campo **Natureza** torna-se obrigatório.
+
+Cada campo possui um botão de orientação (?) que abre um modal explicativo com exemplos e diretrizes para preenchimento.
+
+### 1.5 Dependências críticas do projeto
+
+O campo **Dependências críticas do projeto** permite registrar todas as dependências que podem afetar o andamento do projeto, incluindo:
+
+- **Dependências de entrada** — o que o projeto precisa receber de outros projetos, órgãos ou processos
+- **Dependências de saída** — o que outros projetos ou processos aguardam deste projeto
+- **Dependências orçamentárias** — aprovações de crédito, processos licitatórios
+- **Dependências normativas** — publicações, autorizações legais, pareceres
+- **Dependências de recursos** — pessoal, equipamentos, infraestrutura
+- **Dependências externas** — decisões de outros órgãos, fornecedores, parceiros
+
+Esse mapeamento permite ao Gabinete de Projetos identificar riscos de bloqueio antecipadamente.
+
+### 1.6 Status de projetos
 
 Os projetos possuem três estados de visualização:
 
@@ -36,7 +63,7 @@ Os projetos possuem três estados de visualização:
 
 Na lista de projetos, o usuário alterna entre as três abas para filtrar a exibição.
 
-### 1.5 Pontualidade das entregas
+### 1.7 Pontualidade das entregas
 
 Cada entrega exibe um indicador visual de pontualidade baseado na data final prevista:
 
@@ -46,7 +73,7 @@ Cada entrega exibe um indicador visual de pontualidade baseado na data final pre
 | Amarelo (atenção) | Prazo dentro dos próximos 15 dias |
 | Vermelho (atrasado) | Prazo já vencido |
 
-### 1.6 Validações de datas
+### 1.8 Validações de datas
 
 O sistema aplica validações bidirecionais de datas:
 
@@ -55,7 +82,7 @@ O sistema aplica validações bidirecionais de datas:
 - A **data prevista de uma atividade** deve estar dentro do intervalo da entrega (entre `data_inicio` e `data_final_prevista`).
 - **Não é possível alterar a data de início de uma entrega** para uma data posterior à data prevista de qualquer atividade já cadastrada. O sistema bloqueia a alteração e informa quais atividades possuem datas incompatíveis, exigindo que sejam ajustadas primeiro.
 
-### 1.7 Validações de campos obrigatórios
+### 1.9 Validações de campos obrigatórios
 
 Em qualquer formulário de criação ou edição:
 
@@ -63,10 +90,11 @@ Em qualquer formulário de criação ou edição:
 - **Entrega:** nome, descrição, critérios de aceite, órgão responsável, responsável pela entrega e ao menos um participante com papel definido.
 - **Atividade:** nome, descrição e responsável pela atividade.
 - **Indicador:** se qualquer campo do indicador for preenchido, o campo **nome** é obrigatório.
+- **Risco:** se qualquer campo do risco for preenchido, o campo **natureza** é obrigatório.
 
 O sistema não permite salvar formulários com campos obrigatórios vazios, informando qual campo está faltando.
 
-### 1.8 Elegibilidade para papéis
+### 1.10 Elegibilidade para papéis
 
 | Papel | Perfis elegíveis |
 |-------|-----------------|
@@ -78,7 +106,7 @@ O sistema não permite salvar formulários com campos obrigatórios vazios, info
 
 O perfil **usuário** pode ser participante de atividades, mas não pode ser líder ou responsável, pois essas funções exigem permissão de edição que o perfil somente-leitura não possui.
 
-### 1.9 Ações estratégicas especiais
+### 1.11 Ações estratégicas especiais
 
 Existem duas ações estratégicas que **não aparecem no módulo de enquadramento** (cards do dashboard principal):
 
@@ -87,7 +115,7 @@ Existem duas ações estratégicas que **não aparecem no módulo de enquadramen
 
 Elas estão disponíveis apenas na seleção de ações ao criar ou editar projetos, permitindo cadastrar projetos que não se enquadram na estrutura estratégica regular.
 
-### 1.10 Órgão responsável e participantes
+### 1.12 Órgão responsável e participantes
 
 Ao salvar uma entrega, o sistema **inclui automaticamente** o órgão responsável como participante, caso ele ainda não esteja na lista. Isso garante que o setor responsável pela entrega sempre aparece entre os participantes.
 
@@ -321,3 +349,61 @@ O sistema **não** impede a exclusão automaticamente, mas os campos de respons�
 2. Um badge indica o perfil que o usuário solicitou (ex: "Solicitou: Gestor")
 3. O master/admin altera o perfil de "Solicitante" para o perfil desejado (usuário, gestor etc.)
 4. A partir desse momento, o usuário consegue fazer login e acessar o sistema
+
+---
+
+## 8. Mensagens do Projeto
+
+O sistema possui uma ferramenta de comunicação integrada a cada projeto, permitindo a troca de mensagens entre os setores envolvidos.
+
+### 8.1 Localização
+
+As mensagens ficam em uma seção colapsável na página de detalhe de cada projeto, abaixo das informações gerais e acima do cronograma de entregas. Ao expandir a seção, o usuário visualiza o histórico completo de mensagens e a área de composição.
+
+### 8.2 Quem pode enviar mensagens
+
+| Perfil | Condição |
+|--------|----------|
+| **Admin** | Sempre pode enviar mensagens em qualquer projeto |
+| **Master** | Sempre pode enviar mensagens em qualquer projeto |
+| **Gestor** | Pode enviar se pertencer a um setor elegível (ver abaixo) ou se for pessoalmente responsável/participante |
+| **Usuário** | Não pode enviar mensagens |
+
+**Setores elegíveis** para um projeto são determinados automaticamente:
+- Setor líder do projeto
+- Órgão responsável de qualquer entrega do projeto
+- Setores participantes de qualquer entrega do projeto
+- Setores dos participantes de qualquer atividade do projeto
+- Setores dos responsáveis por entregas e atividades do projeto
+
+### 8.3 Destinatários
+
+Cada mensagem deve ter **ao menos um setor destinatário**. O remetente seleciona os setores destinatários entre os setores elegíveis do projeto, utilizando botões com o formato **@CÓDIGO** (ex.: @GAP, @SUOP). É possível selecionar múltiplos destinatários ou usar o botão "Selecionar todos".
+
+Embora os destinatários sejam setores, o **controle de leitura é individualizado por usuário**.
+
+### 8.4 Controle de leitura
+
+- Cada mensagem possui controle individual de leitura por usuário
+- Mensagens não lidas são destacadas visualmente (borda lateral azul)
+- O usuário pode marcar mensagens como lidas individualmente (botão ✓) ou todas de uma vez ao expandir a seção
+- Mensagens enviadas pelo próprio usuário são automaticamente consideradas como lidas
+- Admin e Master visualizam todas as mensagens do projeto, independentemente dos setores destinatários
+
+### 8.5 Notificações de mensagens não lidas
+
+O sistema notifica o usuário sobre mensagens pendentes em dois pontos:
+
+1. **Header da página** — Um badge azul no topo informa a quantidade total de mensagens não lidas em todos os projetos. Ao clicar, o usuário é direcionado para a lista de projetos.
+
+2. **Cards dos projetos** — Na lista de projetos, cada card exibe um badge azul com a quantidade de mensagens não lidas daquele projeto específico, permitindo identificar rapidamente onde há comunicações pendentes.
+
+### 8.6 Formato das mensagens
+
+Cada mensagem exibe:
+- **Nome do autor** e **código do setor** do autor
+- **Data e hora** de envio
+- **Tags dos setores destinatários** (formato @CÓDIGO)
+- **Conteúdo** da mensagem
+
+As mensagens enviadas pelo usuário logado aparecem alinhadas à direita com fundo azul claro, enquanto mensagens de outros aparecem alinhadas à esquerda.

@@ -60,6 +60,7 @@ export default function NovoProjetoPage() {
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavelId, setResponsavelId] = useState<string | null>(null)
   const [indicadores, setIndicadores] = useState<{ nome: string, formula: string, fonte_dados: string, periodicidade: string, unidade_medida: string, responsavel: string, meta: string }[]>([])
+  const [riscos, setRiscos] = useState<{ natureza: string, probabilidade: string, medida_resposta: string }[]>([])
   const [dependenciasProjetos, setDependenciasProjetos] = useState('')
   const savingRef = useRef(false)
 
@@ -335,6 +336,13 @@ export default function NovoProjetoPage() {
       savingRef.current = false; return
     }
 
+    // Validate risco natureza required
+    const riscosComDados = riscos.filter(r => r.natureza || r.probabilidade || r.medida_resposta)
+    if (riscosComDados.some(r => !r.natureza?.trim())) {
+      alert('Preencha o campo "Natureza" de todos os riscos.')
+      savingRef.current = false; return
+    }
+
     // Validate gestor setor restrictions
     if (!isAdminOrMaster) {
       for (const e of entregas) {
@@ -371,6 +379,11 @@ export default function NovoProjetoPage() {
       // Insert indicadores
       if (indicadoresComDados.length > 0) {
         await supabase.from('indicadores').insert(indicadoresComDados.map(i => ({ projeto_id: proj.id, ...i })))
+      }
+
+      // Insert riscos
+      if (riscosComDados.length > 0) {
+        await supabase.from('riscos').insert(riscosComDados.map(r => ({ projeto_id: proj.id, ...r })))
       }
 
       await supabase.from('audit_log').insert({
@@ -874,15 +887,74 @@ export default function NovoProjetoPage() {
               </div>
 
               <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-gray-700">Matriz de Riscos</label>
+                  </div>
+                  <button type="button" onClick={() => setRiscos([...riscos, { natureza: '', probabilidade: '', medida_resposta: '' }])}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+                    <Plus size={14} /> Risco
+                  </button>
+                </div>
+                {riscos.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">Nenhum risco adicionado. Clique em &quot;+ Risco&quot; para adicionar.</p>
+                )}
+                <div className="space-y-3">
+                  {riscos.map((risco, idx) => (
+                    <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-4 relative">
+                      <button type="button" onClick={() => setRiscos(riscos.filter((_, i) => i !== idx))}
+                        className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Remover risco">
+                        <Trash2 size={16} />
+                      </button>
+                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Risco {idx + 1}</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="md:col-span-2">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Natureza — O que pode acontecer <span className="text-red-500">*</span></label>
+                            <button type="button" onClick={() => setHelpType('campo_risco_natureza')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
+                          <textarea value={risco.natureza} onChange={e => setRiscos(riscos.map((item, i) => i === idx ? { ...item, natureza: e.target.value } : item))}
+                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
+                            placeholder='Ex.: "Indisponibilidade de servidores capacitados para as atividades de campo"' />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Probabilidade</label>
+                            <button type="button" onClick={() => setHelpType('campo_risco_probabilidade')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
+                          <select value={risco.probabilidade} onChange={e => setRiscos(riscos.map((item, i) => i === idx ? { ...item, probabilidade: e.target.value } : item))}
+                            className="input-field text-sm">
+                            <option value="">Selecione...</option>
+                            <option value="baixa">Baixa</option>
+                            <option value="media">Média</option>
+                            <option value="alta">Alta</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Medida de Resposta — Como reduzir, contornar ou mitigar</label>
+                            <button type="button" onClick={() => setHelpType('campo_risco_medida')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
+                          <textarea value={risco.medida_resposta} onChange={e => setRiscos(riscos.map((item, i) => i === idx ? { ...item, medida_resposta: e.target.value } : item))}
+                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700 resize-y leading-relaxed" rows={2}
+                            placeholder='Ex.: "Identificar e capacitar servidores de outros setores como alternativa; firmar acordo com órgão parceiro"' />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Dependências com outros projetos</label>
+                  <label className="block text-sm font-semibold text-gray-700">Dependências críticas do projeto</label>
                   <button type="button" onClick={() => setHelpType('campo_dependencias')} className="text-gray-400 hover:text-orange-500 transition-colors" title="Ver ajuda sobre este campo">
                     <HelpCircle size={15} />
                   </button>
                 </div>
                 <textarea value={dependenciasProjetos} onChange={e => setDependenciasProjetos(e.target.value)} rows={2}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-gray-700 resize-y leading-relaxed"
-                  placeholder={'Descreva se este projeto depende de outro para ser executado, ou se outros projetos dependem dele. Ex.: "Este projeto depende da conclusão do Projeto X para ter acesso ao sistema Y"'} />
+                  placeholder={'Descreva dependências críticas deste projeto: outros projetos, aprovações orçamentárias, decisões normativas, disponibilidade de recursos, fornecedores externos etc. Ex.: "Depende da conclusão do Projeto X para acesso ao sistema Y; aguarda liberação de crédito orçamentário para aquisição de equipamentos"'} />
               </div>
             </div>
 

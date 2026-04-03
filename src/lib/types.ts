@@ -167,6 +167,27 @@ export interface Indicador {
   meta: string
 }
 
+export interface Risco {
+  id?: number
+  projeto_id?: number
+  natureza: string
+  probabilidade: string
+  medida_resposta: string
+}
+
+export interface MensagemProjeto {
+  id: number
+  projeto_id: number
+  autor_id: string
+  conteudo: string
+  created_at: string
+  autor_nome?: string
+  autor_setor_codigo?: string
+  autor_setor_id?: number
+  destinatarios?: { setor_id: number; codigo: string; nome_completo: string }[]
+  lida_por_mim?: boolean
+}
+
 export interface AuditLogEntry {
   id: number
   usuario_id: string
