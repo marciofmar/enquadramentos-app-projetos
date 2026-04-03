@@ -121,7 +121,13 @@
       "Bash(find C:Usersmarciprojetosenquadramentos-app-projetos -maxdepth 3 -type f \\\\\\(-name *.md -o -name README* \\\\\\) ! -path */node_modules/* ! -path */.next/*)",
       "Bash(ls next.config.*)",
       "Bash(npm install:*)",
-      "Bash(node \"C:\\\\Users\\\\marci\\\\Downloads\\\\converter-acoes.js\")"
+      "Bash(node \"C:\\\\Users\\\\marci\\\\Downloads\\\\converter-acoes.js\")",
+      "Bash(find /c/Users/marci/projetos/enquadramentos-app-projetos -type f -name manifest.json -o -name service-worker.js -o -name *.sw.js)",
+      "Bash(grep -B 5 -A 10 \"await supabase.from\\(''''alertas''''\\).insert\" /c/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)",
+      "Bash(grep -A 20 \"CREATE TABLE alertas\" /c/Users/marci/projetos/enquadramentos-app-projetos/*.sql)",
+      "Bash(grep -i \"alertas\" /c/Users/marci/projetos/enquadramentos-app-projetos/*.sql)",
+      "Bash(npx web-push:*)",
+      "Bash(ls \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\public\\\\icons\"\" 2>/dev/null || echo \"NO_ICONS_DIR \")"
     ]
   }
 }

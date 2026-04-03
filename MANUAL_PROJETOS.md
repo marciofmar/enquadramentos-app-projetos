@@ -407,3 +407,45 @@ Cada mensagem exibe:
 - **Conteúdo** da mensagem
 
 As mensagens enviadas pelo usuário logado aparecem alinhadas à direita com fundo azul claro, enquanto mensagens de outros aparecem alinhadas à esquerda.
+
+## 9. Notificações Push (PWA)
+
+O SIGPLAN pode ser instalado como aplicativo no celular ou computador e enviar notificações push nativas, mesmo quando o navegador está fechado.
+
+### 9.1 Instalação como aplicativo (PWA)
+
+No navegador do celular (Chrome, Edge, Safari), ao acessar o SIGPLAN aparecerá a opção "Instalar" ou "Adicionar à tela inicial". O aplicativo abrirá em modo standalone (sem barra de endereço), como um app nativo.
+
+### 9.2 Ativação das notificações push
+
+No cabeçalho do sistema, ao lado do botão de perfil, há um botão de sino:
+- **"Ativar push"** — clique para habilitar notificações neste dispositivo
+- **"Push ativo"** (verde) — notificações já estão ativas; clique para desativar
+- **"Bloqueado"** (cinza) — as notificações foram bloqueadas nas configurações do navegador
+
+Ao ativar, o navegador solicitará permissão para exibir notificações. É necessário aceitar para que o recurso funcione.
+
+### 9.3 Quando as notificações são enviadas
+
+As notificações push são disparadas nos mesmos eventos que geram alertas no sistema:
+- Nomeação como líder, responsável por entrega ou atividade
+- Nomeação como participante de entrega ou atividade
+- Edição ou exclusão de entregas e atividades
+- Criação de novas entregas e atividades
+
+### 9.4 Comportamento da notificação
+
+Ao receber uma notificação push:
+- O dispositivo exibirá uma notificação nativa com título, descrição e ícone do SIGPLAN
+- Ao clicar na notificação, o sistema abrirá diretamente na página do projeto relacionado
+- Se o SIGPLAN já estiver aberto em uma aba, essa aba será focada e navegada
+
+### 9.5 Gerenciamento de dispositivos
+
+Cada dispositivo (celular, computador, tablet) mantém sua própria inscrição de push. Para receber notificações em múltiplos dispositivos, ative o push em cada um. Inscrições de dispositivos cujo push foi revogado ou expirou são automaticamente removidas pelo sistema.
+
+### 9.6 Requisitos
+
+- Navegador compatível: Chrome, Edge, Firefox ou Safari 16.4+ (iOS)
+- Conexão com a internet (para receber o push; a notificação é exibida mesmo offline)
+- Permissão de notificação concedida no navegador

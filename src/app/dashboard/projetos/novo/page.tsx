@@ -8,6 +8,7 @@ import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
+import { sendPushForAlerts } from '@/lib/push-client'
 import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
@@ -513,6 +514,8 @@ export default function NovoProjetoPage() {
       // Batch insert all alerts
       if (alertas.length > 0) {
         await supabase.from('alertas').insert(alertas)
+        // Send push notifications (best-effort, non-blocking)
+        sendPushForAlerts(alertas)
       }
 
       router.push(`/dashboard/projetos/${proj.id}`)
