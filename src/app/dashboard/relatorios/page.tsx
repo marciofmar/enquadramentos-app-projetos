@@ -1,11 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { FileBarChart, Search, CheckSquare, Square, Loader2 } from 'lucide-react'
+import { FileBarChart, Search, CheckSquare, Square, Loader2, Filter, Info, Pause, X } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 import { generateReportPDF } from '@/lib/generate-report-pdf'
+import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
+
+interface ProjetoItem {
+  id: number
+  nome: string
+  descricao: string
+  setor_lider_codigo: string
+  setor_lider_nome: string
+  acoes: { numero: string; nome: string; oe_codigo: string }[]
+  tipo_acao: string[]
+  setores_participantes: string[]
+  responsavel_id: string | null
+  responsaveis_entrega: string[]
+  responsaveis_atividade: string[]
+  participantes_atividade: string[]
+  status: string
+  status_projeto: string
+}
 
 export default function RelatoriosPage() {
   const supabase = createClient()
@@ -16,17 +34,33 @@ export default function RelatoriosPage() {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
 
-  const [projetos, setProjetos] = useState<{ id: number; nome: string; setor_codigo?: string }[]>([])
+  // Projects
+  const [projetos, setProjetos] = useState<ProjetoItem[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [search, setSearch] = useState('')
 
+  // Sections
   const [sections, setSections] = useState({
     projeto: true,
     entregas: true,
     atividades: true,
   })
-
   const [reportName, setReportName] = useState('')
+
+  // Filters
+  const [searchText, setSearchText] = useState('')
+  const [oeFilter, setOeFilter] = useState('')
+  const [acaoFilter, setAcaoFilter] = useState('')
+  const [setorFilter, setSetorFilter] = useState('')
+  const [tipoAcaoFilter, setTipoAcaoFilter] = useState('')
+  const [responsavelFilter, setResponsavelFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativos' | 'concluidos' | 'hibernando'>('todos')
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Reference data for filters
+  const [oes, setOes] = useState<{ codigo: string; nome: string }[]>([])
+  const [acoesRef, setAcoesRef] = useState<{ numero: string; nome: string; oe_codigo: string }[]>([])
+  const [setores, setSetores] = useState<{ id: number; codigo: string; nome_completo: string }[]>([])
+  const [eligibleUsers, setEligibleUsers] = useState<{ id: string; nome: string; setor_id: number | null; setor_codigo: string | null }[]>([])
 
   useEffect(() => {
     async function load() {
@@ -45,17 +79,103 @@ export default function RelatoriosPage() {
       }
       setProfile(data as Profile)
 
-      const { data: projs } = await supabase
-        .from('projetos')
-        .select('id, nome, setor_lider:setor_lider_id(codigo)')
+      // Load reference data for filters
+      const [oesRes, acoesRes, setoresRes, usersRes] = await Promise.all([
+        supabase.from('objetivos_estrategicos').select('codigo, nome').order('codigo'),
+        supabase.from('acoes_estrategicas')
+          .select('numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo)')
+          .order('numero'),
+        supabase.from('setores').select('id, codigo, nome_completo').order('codigo'),
+        supabase.from('profiles')
+          .select('id, nome, setor_id, setores:setor_id(codigo)')
+          .not('role', 'eq', 'solicitante')
+          .eq('ativo', true)
+          .order('nome'),
+      ])
+
+      if (oesRes.data) setOes(oesRes.data)
+      if (acoesRes.data) setAcoesRef(acoesRes.data.map((a: any) => ({
+        numero: a.numero, nome: a.nome, oe_codigo: a.objetivo_estrategico?.codigo || ''
+      })))
+      if (setoresRes.data) setSetores(setoresRes.data)
+      if (usersRes.data) setEligibleUsers(usersRes.data.map((u: any) => ({
+        id: u.id, nome: u.nome,
+        setor_id: u.setor_id, setor_codigo: u.setores?.codigo || null
+      })))
+
+      // Load projects with data needed for filtering
+      const { data: projData } = await supabase.from('projetos')
+        .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id, status,
+          setor_lider:setor_lider_id(codigo, nome_completo),
+          projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
+          entregas(id, status, responsavel_entrega_id, orgao_responsavel_setor_id,
+            entrega_participantes(setor_id, tipo_participante, setor:setor_id(codigo)),
+            atividades(id, status, responsavel_atividade_id,
+              atividade_participantes(setor_id, user_id, tipo_participante, setor:setor_id(codigo)))
+          )`)
         .order('nome')
 
-      if (projs) {
-        setProjetos(projs.map((p: any) => ({
-          id: p.id,
-          nome: p.nome,
-          setor_codigo: p.setor_lider?.codigo || '',
-        })))
+      if (projData && setoresRes.data) {
+        const cards: ProjetoItem[] = projData.map((p: any) => {
+          const respEntregaSet = new Set<string>()
+          const respAtividadeSet = new Set<string>()
+          const partAtividadeSet = new Set<string>()
+          const setorSet = new Set<string>()
+
+          p.entregas?.forEach((e: any) => {
+            if (e.responsavel_entrega_id) respEntregaSet.add(e.responsavel_entrega_id)
+            if (e.orgao_responsavel_setor_id) {
+              const setorResp = setoresRes.data!.find((st: any) => st.id === e.orgao_responsavel_setor_id)
+              if (setorResp) setorSet.add(setorResp.codigo)
+            }
+            e.entrega_participantes?.forEach((ep: any) => {
+              if (ep.tipo_participante === 'setor' && ep.setor) setorSet.add(ep.setor.codigo)
+              else if (ep.tipo_participante === 'externo_subsegop') setorSet.add('Ext. SUBSEGOP')
+              else if (ep.tipo_participante === 'externo_sedec') setorSet.add('Ext. SEDEC')
+            })
+            e.atividades?.forEach((a: any) => {
+              if (a.responsavel_atividade_id) respAtividadeSet.add(a.responsavel_atividade_id)
+              a.atividade_participantes?.forEach((ap: any) => {
+                if (ap.user_id) partAtividadeSet.add(ap.user_id)
+                if (ap.tipo_participante === 'setor' && ap.setor) setorSet.add(ap.setor.codigo)
+                else if (ap.tipo_participante === 'externo_subsegop') setorSet.add('Ext. SUBSEGOP')
+                else if (ap.tipo_participante === 'externo_sedec') setorSet.add('Ext. SEDEC')
+              })
+            })
+          })
+
+          // Derive status_projeto
+          const entregas = p.entregas || []
+          let status_projeto = 'em_andamento'
+          if (p.status === 'hibernando') {
+            status_projeto = 'hibernando'
+          } else if (entregas.length > 0) {
+            if (entregas.every((e: any) => e.status === 'cancelada')) status_projeto = 'cancelado'
+            else if (entregas.every((e: any) => e.status === 'resolvida' || e.status === 'cancelada') && entregas.some((e: any) => e.status === 'resolvida')) status_projeto = 'concluido'
+          }
+
+          return {
+            id: p.id,
+            nome: p.nome,
+            descricao: p.descricao,
+            setor_lider_codigo: p.setor_lider?.codigo || '',
+            setor_lider_nome: p.setor_lider?.nome_completo || '',
+            acoes: (p.projeto_acoes || []).map((pa: any) => ({
+              numero: pa.acao_estrategica?.numero || '',
+              nome: pa.acao_estrategica?.nome || '',
+              oe_codigo: pa.acao_estrategica?.objetivo_estrategico?.codigo || '',
+            })),
+            tipo_acao: p.tipo_acao || [],
+            setores_participantes: Array.from(setorSet),
+            responsavel_id: p.responsavel_id || null,
+            responsaveis_entrega: Array.from(respEntregaSet),
+            responsaveis_atividade: Array.from(respAtividadeSet),
+            participantes_atividade: Array.from(partAtividadeSet),
+            status: p.status || 'ativo',
+            status_projeto,
+          }
+        })
+        setProjetos(cards)
       }
 
       setLoading(false)
@@ -63,10 +183,73 @@ export default function RelatoriosPage() {
     load()
   }, [])
 
-  const filteredProjetos = projetos.filter(p =>
-    p.nome.toLowerCase().includes(search.toLowerCase()) ||
-    (p.setor_codigo && p.setor_codigo.toLowerCase().includes(search.toLowerCase()))
-  )
+  // Filter dependencies
+  const filteredAcoes = useMemo(() => {
+    if (!oeFilter) return acoesRef
+    return acoesRef.filter(a => a.oe_codigo === oeFilter)
+  }, [acoesRef, oeFilter])
+
+  const filteredEligibleUsers = useMemo(() => {
+    if (!setorFilter) return eligibleUsers
+    const setorObj = setores.find(s => s.codigo === setorFilter)
+    if (!setorObj) return eligibleUsers
+    return eligibleUsers.filter(u => u.setor_id === setorObj.id)
+  }, [eligibleUsers, setorFilter, setores])
+
+  // Reset acao when OE changes
+  useEffect(() => { setAcaoFilter('') }, [oeFilter])
+
+  // Filtered projects
+  const filteredProjetos = useMemo(() => {
+    return projetos.filter(p => {
+      if (searchText) {
+        const s = searchText.toLowerCase()
+        if (!p.nome.toLowerCase().includes(s) && !p.descricao.toLowerCase().includes(s)) return false
+      }
+      if (oeFilter) {
+        if (!p.acoes.some(a => a.oe_codigo === oeFilter)) return false
+      }
+      if (acaoFilter) {
+        if (!p.acoes.some(a => a.numero === acaoFilter)) return false
+      }
+      if (setorFilter) {
+        const isLider = p.setor_lider_codigo === setorFilter
+        const isParticipante = p.setores_participantes.includes(setorFilter)
+        if (!isLider && !isParticipante) return false
+      }
+      if (tipoAcaoFilter) {
+        if (!p.tipo_acao.includes(tipoAcaoFilter)) return false
+      }
+      if (responsavelFilter) {
+        const isLider = p.responsavel_id === responsavelFilter
+        const isRespEntrega = p.responsaveis_entrega.includes(responsavelFilter)
+        const isRespAtividade = p.responsaveis_atividade.includes(responsavelFilter)
+        const isPartAtividade = p.participantes_atividade.includes(responsavelFilter)
+        if (!isLider && !isRespEntrega && !isRespAtividade && !isPartAtividade) return false
+      }
+      if (statusFilter === 'ativos') {
+        if (p.status === 'hibernando') return false
+        if (p.status_projeto === 'concluido' || p.status_projeto === 'cancelado') return false
+      } else if (statusFilter === 'concluidos') {
+        if (p.status === 'hibernando') return false
+        if (p.status_projeto !== 'concluido' && p.status_projeto !== 'cancelado') return false
+      } else if (statusFilter === 'hibernando') {
+        if (p.status !== 'hibernando') return false
+      }
+      return true
+    })
+  }, [projetos, searchText, oeFilter, acaoFilter, setorFilter, tipoAcaoFilter, responsavelFilter, statusFilter])
+
+  const hasFilters = !!(searchText || oeFilter || acaoFilter || setorFilter || tipoAcaoFilter || responsavelFilter)
+
+  function clearFilters() {
+    setSearchText('')
+    setOeFilter('')
+    setAcaoFilter('')
+    setSetorFilter('')
+    setTipoAcaoFilter('')
+    setResponsavelFilter('')
+  }
 
   function toggleProject(id: number) {
     setSelectedIds(prev => {
@@ -78,7 +261,11 @@ export default function RelatoriosPage() {
   }
 
   function selectAll() {
-    setSelectedIds(new Set(filteredProjetos.map(p => p.id)))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      filteredProjetos.forEach(p => next.add(p.id))
+      return next
+    })
   }
 
   function clearSelection() {
@@ -180,36 +367,147 @@ export default function RelatoriosPage() {
 
       {/* Seleção de projetos */}
       <div className="card p-5 mb-6">
-        <label className="block text-sm font-semibold text-gray-700 mb-3">
-          Projetos ({selectedIds.size} de {projetos.length} selecionados)
-        </label>
-
-        {/* Busca + ações */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-3">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              className="input-field pl-8"
-              placeholder="Buscar projeto..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={selectAll} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
-              <CheckSquare size={13} /> Selecionar todos
-            </button>
-            <button onClick={clearSelection} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
-              <Square size={13} /> Limpar
+        <div className="flex items-center justify-between mb-3">
+          <label className="block text-sm font-semibold text-gray-700">
+            Projetos ({selectedIds.size} de {projetos.length} selecionados)
+          </label>
+          <div className="flex items-center gap-2">
+            {/* Status filter toggle */}
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+              <button onClick={() => setStatusFilter('todos')}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'todos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                Todos
+              </button>
+              <button onClick={() => setStatusFilter('ativos')}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'ativos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                Ativos
+              </button>
+              <button onClick={() => setStatusFilter('concluidos')}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'concluidos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                Concluídos
+              </button>
+              <button onClick={() => setStatusFilter('hibernando')}
+                className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'hibernando' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                <Pause size={11} /> Hibernando
+              </button>
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                showFilters || hasFilters ? 'bg-sedec-50 border-sedec-300 text-sedec-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              <Filter size={13} /> Filtros {hasFilters && '•'}
             </button>
           </div>
         </div>
 
-        {/* Lista */}
+        {/* Filters panel */}
+        {(showFilters || hasFilters) && (
+          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-3 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+              <Filter size={14} /> Filtros
+              {hasFilters && (
+                <button onClick={clearFilters}
+                  className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                  <X size={13} /> Limpar
+                </button>
+              )}
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar projeto..." value={searchText}
+                onChange={e => setSearchText(e.target.value)} className="input-field pl-8"
+                title="Busca por nome do projeto" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 cursor-help"
+                title="Busca por nome do projeto"><Info size={12} /></span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* OE */}
+              <div className="relative">
+                <select value={oeFilter} onChange={e => setOeFilter(e.target.value)}
+                  className="input-field"
+                  title="Filtra projetos vinculados ao objetivo estratégico selecionado">
+                  <option value="">Todos os objetivos</option>
+                  {oes.map(o => <option key={o.codigo} value={o.codigo}>
+                    {o.codigo} — {o.nome.substring(0, 60)}</option>)}
+                </select>
+                <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none"
+                  title="Filtra projetos vinculados ao objetivo estratégico selecionado"><Info size={12} /></span>
+              </div>
+
+              {/* Ação */}
+              <div className="relative">
+                <select value={acaoFilter} onChange={e => setAcaoFilter(e.target.value)}
+                  className="input-field"
+                  title="Filtra projetos vinculados à ação estratégica selecionada (depende do filtro de objetivo)">
+                  <option value="">Todas as ações</option>
+                  {filteredAcoes.map(a => <option key={a.numero} value={a.numero}>
+                    AE {a.numero}</option>)}
+                </select>
+                <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none"
+                  title="Filtra projetos vinculados à ação estratégica selecionada (depende do filtro de objetivo)"><Info size={12} /></span>
+              </div>
+
+              {/* Setor */}
+              <div className="relative">
+                <select value={setorFilter} onChange={e => setSetorFilter(e.target.value)}
+                  className="input-field"
+                  title="Filtra por setor líder, setor responsável pela entrega ou setores participantes">
+                  <option value="">Todos os setores</option>
+                  {setores.map(s => <option key={s.codigo} value={s.codigo}>
+                    {s.codigo}</option>)}
+                </select>
+                <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none"
+                  title="Filtra por setor líder, setor responsável pela entrega ou setores participantes"><Info size={12} /></span>
+              </div>
+
+              {/* Tipo ação */}
+              <div className="relative">
+                <select value={tipoAcaoFilter} onChange={e => setTipoAcaoFilter(e.target.value)}
+                  className="input-field"
+                  title="Filtra pelo tipo de ação estratégica vinculada ao projeto">
+                  <option value="">Todos os tipos de ação</option>
+                  {['Prevenção', 'Mitigação', 'Preparação', 'Resposta', 'Recuperação', 'Gestão/Governança', 'Inovação', 'Integração']
+                    .map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <span className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-300 cursor-help pointer-events-none"
+                  title="Filtra pelo tipo de ação estratégica vinculada ao projeto"><Info size={12} /></span>
+              </div>
+            </div>
+
+            {/* Responsável */}
+            <div className="relative"
+              title="Filtra projetos onde o usuário é líder do projeto, responsável ou participante de entrega/atividade">
+              <UserAutocompleteSelect
+                value={responsavelFilter || null}
+                onChange={val => setResponsavelFilter(val || '')}
+                users={filteredEligibleUsers}
+                placeholder="Responsável/Participante"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Actions + list */}
+        <div className="flex flex-col sm:flex-row gap-2 mb-3">
+          <div className="flex gap-2 ml-auto">
+            <button onClick={selectAll} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
+              <CheckSquare size={13} /> Selecionar exibidos ({filteredProjetos.length})
+            </button>
+            <button onClick={clearSelection} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
+              <Square size={13} /> Limpar seleção
+            </button>
+          </div>
+        </div>
+
+        {/* Project list */}
         <div className="max-h-80 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
           {filteredProjetos.length === 0 && (
-            <div className="text-center text-sm text-gray-400 py-6">Nenhum projeto encontrado.</div>
+            <div className="text-center text-sm text-gray-400 py-6">Nenhum projeto encontrado com os filtros aplicados.</div>
           )}
           {filteredProjetos.map(p => (
             <label
@@ -224,11 +522,12 @@ export default function RelatoriosPage() {
                 onChange={() => toggleProject(p.id)}
                 className="accent-sedec-600 shrink-0"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <span className="text-sm text-gray-800 block truncate">{p.nome}</span>
-                {p.setor_codigo && (
-                  <span className="text-xs text-gray-400">{p.setor_codigo}</span>
-                )}
+                <span className="text-xs text-gray-400">
+                  {p.setor_lider_codigo}
+                  {p.acoes.length > 0 && ` · AE ${p.acoes.map(a => a.numero).join(', ')}`}
+                </span>
               </div>
             </label>
           ))}
