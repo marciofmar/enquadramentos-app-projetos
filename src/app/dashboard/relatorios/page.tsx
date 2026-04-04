@@ -367,39 +367,37 @@ export default function RelatoriosPage() {
 
       {/* Seleção de projetos */}
       <div className="card p-5 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-semibold text-gray-700">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <label className="text-sm font-semibold text-gray-700 mr-auto">
             Projetos ({selectedIds.size} de {projetos.length} selecionados)
           </label>
-          <div className="flex items-center gap-2">
-            {/* Status filter toggle */}
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-              <button onClick={() => setStatusFilter('todos')}
-                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'todos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                Todos
-              </button>
-              <button onClick={() => setStatusFilter('ativos')}
-                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'ativos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                Ativos
-              </button>
-              <button onClick={() => setStatusFilter('concluidos')}
-                className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'concluidos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                Concluídos
-              </button>
-              <button onClick={() => setStatusFilter('hibernando')}
-                className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'hibernando' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                <Pause size={11} /> Hibernando
-              </button>
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
-                showFilters || hasFilters ? 'bg-sedec-50 border-sedec-300 text-sedec-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              <Filter size={13} /> Filtros {hasFilters && '•'}
+          {/* Status filter toggle */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button onClick={() => setStatusFilter('todos')}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'todos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Todos
+            </button>
+            <button onClick={() => setStatusFilter('ativos')}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'ativos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Ativos
+            </button>
+            <button onClick={() => setStatusFilter('concluidos')}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'concluidos' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Concluídos
+            </button>
+            <button onClick={() => setStatusFilter('hibernando')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors ${statusFilter === 'hibernando' ? 'bg-sedec-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              <Pause size={11} /> Hib.
             </button>
           </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+              showFilters || hasFilters ? 'bg-sedec-50 border-sedec-300 text-sedec-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+            }`}
+          >
+            <Filter size={13} /> Filtros {hasFilters && '•'}
+          </button>
         </div>
 
         {/* Filters panel */}

@@ -551,7 +551,7 @@ export default function ProjetosPage() {
           <Filter size={14} /> Filtros {hasFilters && <span className="bg-white/30 text-[10px] px-1.5 rounded-full">ativos</span>} {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
 
-        <div className="ml-auto flex gap-1.5">
+        <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-1.5">
           {/* Seletor de agrupamento */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button onClick={() => setGroupBy('setor')}
