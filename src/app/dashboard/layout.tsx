@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen, MessageSquare } from 'lucide-react'
+import { LogOut, Settings, User, FileText, FolderKanban, CalendarDays, BarChart3, Bell, AlertCircle, ChevronDown, ChevronUp, X, BookOpen, MessageSquare, FileBarChart } from 'lucide-react'
 import ManualModal from '@/components/ManualModal'
 import PushNotificationManager from '@/components/PushNotificationManager'
 import type { Profile } from '@/lib/types'
@@ -204,86 +204,98 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Top bar - preto com laranja (identidade SEDEC) */}
       <header className="bg-gray-900 text-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <button onClick={() => router.push('/dashboard')} className="flex items-center gap-3 hover:opacity-90">
+          <div className="flex items-center justify-between h-16 gap-2">
+            {/* Logo + SIGPLAN */}
+            <button onClick={() => router.push('/dashboard')} className="flex items-center gap-3 shrink-0 hover:opacity-90">
               <img src="/logo-sedec.png" alt="SEDEC-RJ" className="h-10" />
-              <div className="hidden sm:block border-l border-gray-600 pl-3">
-                <span className="font-bold text-sm block leading-tight tracking-wide">SIGPLAN</span>
-                <span className="text-[11px] text-gray-400">Governança e Planejamento • SEDEC-RJ</span>
+              <div className="hidden lg:block border-l border-gray-600 pl-3">
+                <span className="block leading-tight tracking-widest text-base font-extrabold">
+                  <span className="text-gray-200">SIG</span><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-yellow-400">PLAN</span>
+                </span>
+                <span className="text-[11px] text-gray-400">Sistema de Governança e Planejamento</span>
               </div>
             </button>
 
             {/* Nav links */}
-            <nav className="hidden md:flex items-center gap-1 ml-6">
+            <nav className="hidden md:flex items-center gap-0.5 ml-4 shrink-0">
               <button onClick={() => router.push('/dashboard')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
-                <FileText size={15} /> Enquadramentos
+                className="flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <FileText size={14} /> <span className="hidden lg:inline">Enquadramentos</span><span className="lg:hidden">Enquad.</span>
               </button>
               <button onClick={() => router.push('/dashboard/projetos')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
-                <FolderKanban size={15} /> Projetos
+                className="flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <FolderKanban size={14} /> Projetos
               </button>
               <button onClick={() => router.push('/dashboard/calendario')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
-                <CalendarDays size={15} /> Calendário
+                className="flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <CalendarDays size={14} /> <span className="hidden lg:inline">Calendário</span><span className="lg:hidden">Calend.</span>
               </button>
               <button onClick={() => router.push('/dashboard/painel-gantt')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
-                <BarChart3 size={15} /> Painel Gantt
+                className="flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                <BarChart3 size={14} /> Gantt
               </button>
+              {(profile?.role === 'admin' || profile?.role === 'master') && (
+                <button onClick={() => router.push('/dashboard/relatorios')}
+                  className="flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-md text-xs lg:text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                  <FileBarChart size={14} /> <span className="hidden lg:inline">Relatórios</span><span className="lg:hidden">Relat.</span>
+                </button>
+              )}
             </nav>
 
-            <div className="flex items-center gap-4">
+            {/* Right side controls */}
+            <div className="flex items-center gap-2 lg:gap-3 ml-auto">
+              {/* Admin badges - compact */}
               {(profile?.role === 'admin' || profile?.role === 'master') && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   {pendingSolicitantes > 0 && (
                     <button onClick={() => router.push('/admin?tab=usuarios')}
-                      className="flex items-center gap-1.5 text-yellow-400 hover:text-yellow-300 text-xs transition-colors">
+                      className="flex items-center gap-1 text-yellow-400 hover:text-yellow-300 text-xs transition-colors" title={`${pendingSolicitantes} cadastro(s) pendente(s)`}>
                       <User size={14} />
-                      <span className="hidden sm:inline">{pendingSolicitantes} cadastro(s) pendente(s)</span>
-                      <span className="sm:hidden bg-yellow-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitantes}</span>
+                      <span className="hidden xl:inline">{pendingSolicitantes} cadastro(s)</span>
+                      <span className="xl:hidden bg-yellow-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitantes}</span>
                     </button>
                   )}
                   {pendingSolicitacoes > 0 && (
                     <button onClick={() => router.push('/admin')}
-                      className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 text-xs transition-colors animate-pulse">
+                      className="flex items-center gap-1 text-amber-400 hover:text-amber-300 text-xs transition-colors animate-pulse" title={`${pendingSolicitacoes} solicitação(ões)`}>
                       <Bell size={14} />
-                      <span className="hidden sm:inline">{pendingSolicitacoes} solicitação(ões)</span>
-                      <span className="sm:hidden bg-amber-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitacoes}</span>
+                      <span className="hidden xl:inline">{pendingSolicitacoes} solic.</span>
+                      <span className="xl:hidden bg-amber-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingSolicitacoes}</span>
                     </button>
                   )}
                   <button
                     onClick={() => router.push('/admin')}
-                    className="flex items-center gap-1.5 text-gray-400 hover:text-orange-400 text-sm transition-colors"
+                    className="flex items-center gap-1 text-gray-400 hover:text-orange-400 text-sm transition-colors"
+                    title={profile?.role === 'master' ? 'Gestão' : 'Admin'}
                   >
-                    <Settings size={16} />
-                    <span className="hidden sm:inline">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
+                    <Settings size={15} />
+                    <span className="hidden lg:inline text-xs">{profile?.role === 'master' ? 'Gestão' : 'Admin'}</span>
                   </button>
                 </div>
               )}
 
               {unreadMessages > 0 && (
                 <button onClick={() => router.push('/dashboard/projetos')}
-                  className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs transition-colors"
+                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs transition-colors"
                   title={`${unreadMessages} mensagem(ns) não lida(s)`}>
                   <MessageSquare size={14} />
-                  <span className="hidden sm:inline">{unreadMessages} mensagem(ns)</span>
-                  <span className="sm:hidden bg-blue-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{unreadMessages}</span>
+                  <span className="hidden xl:inline">{unreadMessages} msg</span>
+                  <span className="xl:hidden bg-blue-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{unreadMessages}</span>
                 </button>
               )}
 
               <PushNotificationManager />
 
               <button onClick={() => router.push('/dashboard/perfil')}
-                className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity" title="Meu Perfil">
-                <User size={16} className="text-gray-400" />
-                <div className="hidden sm:flex flex-col items-end leading-tight">
-                  <span className="text-gray-300 text-xs">{profile?.nome}</span>
+                className="flex items-center gap-1.5 text-sm hover:opacity-80 transition-opacity shrink-0" title="Meu Perfil">
+                <User size={15} className="text-gray-400" />
+                <div className="hidden lg:flex flex-col items-end leading-tight">
+                  <span className="text-gray-300 text-xs truncate max-w-[100px]">{profile?.nome}</span>
                   {profile?.role !== 'admin' && (profile as any)?.setores?.codigo && (
                     <span className="text-[10px] text-gray-500">{(profile as any).setores.codigo}</span>
                   )}
                 </div>
-                <span className="text-xs bg-orange-600 px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
+                <span className="text-[10px] lg:text-xs bg-orange-600 px-1.5 lg:px-2 py-0.5 rounded-full capitalize">{profile?.role}</span>
               </button>
 
               <div className="relative">
@@ -292,7 +304,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   className="text-gray-400 hover:text-sedec-400 transition-colors"
                   title="Manual de Utilização"
                 >
-                  <BookOpen size={18} />
+                  <BookOpen size={17} />
                 </button>
 
                 {manualTooltip && (
@@ -314,7 +326,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
 
               <button onClick={handleLogout} className="text-gray-400 hover:text-white transition-colors" title="Sair">
-                <LogOut size={18} />
+                <LogOut size={17} />
               </button>
             </div>
           </div>
@@ -322,23 +334,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Accent line */}
         <div className="h-0.5 bg-gradient-to-r from-orange-500 via-orange-400 to-yellow-500" />
         {/* Mobile nav */}
-        <div className="md:hidden flex border-t border-gray-700">
+        <div className="md:hidden flex overflow-x-auto border-t border-gray-700">
           <button onClick={() => router.push('/dashboard')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5">
+            className="min-w-fit flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5">
             <FileText size={13} /> Enquadramentos
           </button>
           <button onClick={() => router.push('/dashboard/projetos')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+            className="min-w-fit flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
             <FolderKanban size={13} /> Projetos
           </button>
           <button onClick={() => router.push('/dashboard/calendario')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+            className="min-w-fit flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
             <CalendarDays size={13} /> Calendário
           </button>
           <button onClick={() => router.push('/dashboard/painel-gantt')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+            className="min-w-fit flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
             <BarChart3 size={13} /> Gantt
           </button>
+          {(profile?.role === 'admin' || profile?.role === 'master') && (
+            <button onClick={() => router.push('/dashboard/relatorios')}
+              className="min-w-fit flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 border-l border-gray-700">
+              <FileBarChart size={13} /> Relatórios
+            </button>
+          )}
         </div>
       </header>
 

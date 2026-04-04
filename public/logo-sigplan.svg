@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 56" fill="none">
+  <defs>
+    <linearGradient id="planGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="100%" stop-color="#FACC15"/>
+    </linearGradient>
+  </defs>
   <!-- Shield / governance icon -->
   <g transform="translate(4, 4)">
     <!-- Shield outline -->
@@ -20,10 +26,12 @@
     <!-- Check mark at bottom of shield -->
     <path d="M19 38L22.5 41.5L29 35" stroke="#E97724" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <!-- SIGPLAN text -->
-  <text x="60" y="24" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" font-weight="800" fill="#E97724" letter-spacing="2">SIGPLAN</text>
+  <!-- SIG in light gray, PLAN in orange-to-yellow gradient -->
+  <text x="60" y="24" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" font-weight="800" letter-spacing="3">
+    <tspan fill="#D1D5DB">SIG</tspan><tspan fill="url(#planGrad)">PLAN</tspan>
+  </text>
   <!-- Subtle underline accent -->
-  <rect x="60" y="30" width="132" height="2" rx="1" fill="#E97724" opacity="0.3"/>
+  <rect x="60" y="30" width="132" height="2" rx="1" fill="url(#planGrad)" opacity="0.4"/>
   <!-- Subtitle -->
   <text x="60" y="46" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9" fill="#9CA3AF" letter-spacing="0.5">GOVERNAN&#199;A E PLANEJAMENTO</text>
 </svg>
