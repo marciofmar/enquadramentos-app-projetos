@@ -193,13 +193,19 @@ export async function generateReportPDF(
   doc.setTextColor(80)
   let tocY = 140
   for (let i = 0; i < projetos.length; i++) {
-    if (tocY > pageH - 20) {
+    const setor = projetos[i].setor_lider ? `(${projetos[i].setor_lider.codigo})` : ''
+    const tocText = `${i + 1}. ${projetos[i].nome} ${setor}`
+    const tocLines = doc.splitTextToSize(tocText, contentW - 4)
+    const blockH = tocLines.length * 5
+    if (tocY + blockH > pageH - 20) {
       doc.addPage()
       tocY = 20
     }
-    const setor = projetos[i].setor_lider ? `(${projetos[i].setor_lider.codigo})` : ''
-    doc.text(`${i + 1}. ${projetos[i].nome} ${setor}`, marginL + 2, tocY)
-    tocY += 7
+    for (const line of tocLines) {
+      doc.text(line, marginL + 2, tocY)
+      tocY += 5
+    }
+    tocY += 2
   }
 
   // --- Helper functions ---
@@ -250,10 +256,12 @@ export async function generateReportPDF(
       y += 6
     } else {
       y += 5
-      const allLines = doc.splitTextToSize(value, availW - 4)
-      for (const line of allLines) {
+      const textW = availW - 4
+      const allLines = doc.splitTextToSize(value, textW)
+      for (let li = 0; li < allLines.length; li++) {
         checkSpace(5)
-        doc.text(line, x + 4, y)
+        const isLast = li === allLines.length - 1
+        doc.text(allLines[li], x + 4, y, isLast ? undefined : { align: 'justify', maxWidth: textW })
         y += 4.5
       }
       y += 2
@@ -272,10 +280,12 @@ export async function generateReportPDF(
     y += 5
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(50)
-    const lines = doc.splitTextToSize(value, availW - 4)
-    for (const line of lines) {
+    const textW = availW - 4
+    const lines = doc.splitTextToSize(value, textW)
+    for (let li = 0; li < lines.length; li++) {
       checkSpace(5)
-      doc.text(line, x + 4, y)
+      const isLast = li === lines.length - 1
+      doc.text(lines[li], x + 4, y, isLast ? undefined : { align: 'justify', maxWidth: textW })
       y += 4.5
     }
     y += 2
@@ -319,7 +329,11 @@ export async function generateReportPDF(
     const acoes = proj.projeto_acoes || []
     if (acoes.length > 0) {
       const acaoNames = acoes.map((a: any) => `${a.acao_estrategica?.numero} — ${a.acao_estrategica?.nome}`).join('; ')
-      doc.text(`Ações estratégicas: ${acaoNames}`, marginL, y); y += 5
+      const acaoText = `Ações estratégicas: ${acaoNames}`
+      const acaoLines = doc.splitTextToSize(acaoText, contentW)
+      for (const line of acaoLines) {
+        doc.text(line, marginL, y); y += 5
+      }
     }
 
     y += 4
