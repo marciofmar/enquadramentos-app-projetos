@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient()
     const { data: callerProfile } = await adminClient
       .from('profiles').select('role').eq('id', user.id).single()
-    if (!callerProfile || callerProfile.role !== 'admin') {
+    if (!callerProfile || (callerProfile.role !== 'admin' && callerProfile.role !== 'master')) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
 

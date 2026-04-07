@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle, BookOpen } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
+import AIAssistantsCard from '@/components/AIAssistantsCard'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
@@ -686,6 +687,10 @@ export default function NovoProjetoPage() {
             <HelpCircle size={14} /> Permissões
           </button>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <AIAssistantsCard />
       </div>
 
       <div className="space-y-6">
