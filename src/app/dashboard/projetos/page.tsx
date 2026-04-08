@@ -444,6 +444,14 @@ export default function ProjetosPage() {
 
   const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
   const [viewMode, setViewMode] = useState<'normal' | 'compact'>('compact')
+  const [subgroupByResponsavel, setSubgroupByResponsavel] = useState(false)
+
+  // Mapa rápido id -> nome de usuário para renderizar headers de subgrupo
+  const userLookup = useMemo(() => {
+    const map: Record<string, { nome: string }> = {}
+    eligibleUsers.forEach(u => { map[u.id] = { nome: u.nome } })
+    return map
+  }, [eligibleUsers])
 
   // Group projects by setor or status
   const STATUS_GROUP_LABELS: Record<string, { label: string; icon: any; color: string }> = {
@@ -565,6 +573,19 @@ export default function ProjetosPage() {
               <Activity size={13} /> Status
             </button>
           </div>
+          {groupBy === 'setor' && (
+            <button
+              type="button"
+              onClick={() => setSubgroupByResponsavel(v => !v)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                subgroupByResponsavel
+                  ? 'bg-sedec-100 text-sedec-700 border-sedec-300'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+              title="Subagrupar cards por líder do projeto dentro de cada órgão">
+              <Users size={13} /> Por líder
+            </button>
+          )}
           {/* Seletor de visualização */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button onClick={() => setViewMode('normal')}
@@ -801,12 +822,50 @@ export default function ProjetosPage() {
             )}
           </h2>
 
-          {/* Grid: normal ou compacto */}
-          <div className={viewMode === 'compact'
-            ? 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 items-start'
-            : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start'
-          }>
-            {projs.map(p => {
+          {/* Grid: normal ou compacto, com subgrupos por líder do projeto opcional */}
+          {(() => {
+            const subGroups: Array<[string, ProjetoCard[]]> = (isSetor && subgroupByResponsavel)
+              ? (() => {
+                  const sm: Record<string, ProjetoCard[]> = {}
+                  projs.forEach(p => {
+                    const k = p.responsavel_id || '__SEM__'
+                    if (!sm[k]) sm[k] = []
+                    sm[k].push(p)
+                  })
+                  return Object.entries(sm).sort(([ra], [rb]) => {
+                    if (ra === '__SEM__') return 1
+                    if (rb === '__SEM__') return -1
+                    const na = userLookup[ra]?.nome || ''
+                    const nb = userLookup[rb]?.nome || ''
+                    return na.localeCompare(nb)
+                  })
+                })()
+              : ([['__ALL__', projs]] as Array<[string, ProjetoCard[]]>)
+            return subGroups.map(([respKey, subProjs]) => {
+              const showSubHeader = respKey !== '__ALL__'
+              const respNome = respKey === '__SEM__'
+                ? 'Sem líder do projeto definido'
+                : (userLookup[respKey]?.nome || 'Usuário removido')
+              const subEmDia = subProjs.filter(p => p.status_projeto === 'em_andamento' && p.pontualidade === 'em_dia').length
+              const subProximo = subProjs.filter(p => p.status_projeto === 'em_andamento' && p.pontualidade === 'proximo').length
+              const subAtrasado = subProjs.filter(p => p.status_projeto === 'em_andamento' && p.pontualidade === 'atrasado').length
+              return (
+                <div key={`${groupKey}::${respKey}`} className={showSubHeader ? 'mb-5' : ''}>
+                  {showSubHeader && (
+                    <div className="mt-4 mb-2 flex items-center gap-2 flex-wrap pl-2 border-l-2 border-sedec-200 py-1">
+                      <Crown size={12} className="text-sedec-400" />
+                      <span className="text-xs font-semibold text-gray-700">{respNome}</span>
+                      <span className="text-[10px] text-gray-400">{subProjs.length} projeto{subProjs.length !== 1 ? 's' : ''}</span>
+                      {subEmDia > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">{subEmDia} em dia</span>}
+                      {subProximo > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200">{subProximo} próximo</span>}
+                      {subAtrasado > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">{subAtrasado} atrasado{subAtrasado !== 1 ? 's' : ''}</span>}
+                    </div>
+                  )}
+                  <div className={viewMode === 'compact'
+                    ? 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 items-start'
+                    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start'
+                  }>
+                    {subProjs.map(p => {
               const pontKey = p.status_projeto !== 'em_andamento' ? p.status_projeto : p.pontualidade
               const pont = PONT_CONFIG[pontKey]
               const PontIcon = pont.icon
@@ -992,8 +1051,12 @@ export default function ProjetosPage() {
                   </div>
                 </button>
               )
-            })}
-          </div>
+                    })}
+                  </div>
+                </div>
+              )
+            })
+          })()}
         </div>
         )
       })}

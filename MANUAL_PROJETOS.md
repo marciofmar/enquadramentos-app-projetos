@@ -449,3 +449,35 @@ Cada dispositivo (celular, computador, tablet) mantém sua própria inscrição 
 - Navegador compatível: Chrome, Edge, Firefox ou Safari 16.4+ (iOS)
 - Conexão com a internet (para receber o push; a notificação é exibida mesmo offline)
 - Permissão de notificação concedida no navegador
+
+---
+
+## 10. Painel de projetos — agrupamento e subagrupamento
+
+O painel `/dashboard/projetos` apresenta todos os projetos em forma de cards. Para facilitar a leitura, os cards são organizados em grupos, com dois modos de agrupamento e um modo opcional de subagrupamento.
+
+### 10.1 Agrupamento principal
+
+Na barra de controles, o botão **"Órgão / Status"** alterna entre dois modos:
+
+- **Órgão (padrão):** os projetos são agrupados pelo **setor líder** de cada projeto. Cada grupo exibe o código e o nome do setor, o total de projetos e contadores por status (em andamento, concluído, cancelado).
+- **Status:** os projetos são agrupados pelo **status do projeto** (Em andamento, Concluídos, Cancelados, Hibernando). Dentro de "Em andamento", os projetos são ordenados por pontualidade (atrasados primeiro).
+
+### 10.2 Subagrupamento por líder do projeto
+
+Quando o agrupamento principal é "Órgão", aparece ao lado um botão adicional **"Por líder"**. Ao ativá-lo, dentro de cada setor os cards são subdivididos por **líder do projeto** (o campo `responsavel_id`), permitindo enxergar de forma imediata como a carga de trabalho está distribuída entre os gestores do setor.
+
+Cada subgrupo exibe:
+
+- O **nome do líder do projeto**.
+- O **total de projetos** sob responsabilidade dessa pessoa dentro do setor.
+- **Mini-contadores de pontualidade** dos projetos em andamento: quantos estão *em dia*, *próximos do prazo* e *atrasados*.
+
+Projetos que ainda não têm líder definido são agrupados em um subgrupo chamado **"Sem líder do projeto definido"**, sempre exibido por último.
+
+**Observações:**
+
+- O botão "Por líder" só aparece quando o agrupamento principal é "Órgão". Se o usuário trocar para "Status", o botão some automaticamente e os subgrupos são desativados.
+- O subagrupamento é aplicado **depois** dos filtros, então ele respeita qualquer filtro ativo (setor, responsável/participante, status, busca textual etc.). Filtrar por uma pessoa específica + ativar o subagrupamento resulta em apenas um subgrupo por setor.
+- Alternar entre as visualizações **Normal** e **Compacta** continua funcionando dentro de cada subgrupo, sem alterar o layout das colunas.
+- Se um líder estava ativo quando o projeto foi criado mas depois foi removido do sistema, o subgrupo aparece com o rótulo **"Usuário removido"**.
