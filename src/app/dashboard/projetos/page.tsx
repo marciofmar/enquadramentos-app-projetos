@@ -10,6 +10,7 @@ import HelpTooltipModal, { type HelpType } from '@/components/HelpTooltipModal'
 
 interface ProjetoCard {
   id: number
+  codigo_sequencial: number | null
   nome: string
   descricao: string
   setor_lider_id: number
@@ -134,7 +135,7 @@ export default function ProjetosPage() {
 
     // Projects with all related data
     const { data: projData } = await supabase.from('projetos')
-      .select(`id, nome, descricao, setor_lider_id, tipo_acao, responsavel_id, status,
+      .select(`id, codigo_sequencial, nome, descricao, setor_lider_id, tipo_acao, responsavel_id, status,
         setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(numero, nome, objetivo_estrategico:objetivo_estrategico_id(codigo))),
         entregas(id, nome, data_final_prevista, status, responsavel_entrega_id, orgao_responsavel_setor_id,
@@ -293,6 +294,7 @@ export default function ProjetosPage() {
 
         return {
           id: p.id,
+          codigo_sequencial: p.codigo_sequencial ?? null,
           nome: p.nome,
           descricao: p.descricao,
           setor_lider_id: p.setor_lider_id,
@@ -817,6 +819,11 @@ export default function ProjetosPage() {
                     className={`card p-3 text-left group hover:border-orange-300 hover:z-10 hover:shadow-lg transition-all relative ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : isAlertaImpacto ? 'ring-2 ring-amber-400 ring-offset-1 bg-amber-50/40 animate-pulse' : ''}`}>
                     <div className="flex items-start justify-between gap-1 mb-1">
                       <h3 className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2 group-hover:line-clamp-none">
+                        {p.codigo_sequencial != null && (
+                          <span className="inline-block mr-1 px-1 py-0.5 rounded bg-orange-100 text-orange-700 text-[9px] font-bold align-middle">
+                            SP-{String(p.codigo_sequencial).padStart(4, '0')}
+                          </span>
+                        )}
                         {p.nome}
                       </h3>
                       {isAlerta && (
@@ -871,6 +878,11 @@ export default function ProjetosPage() {
                   className={`card p-5 text-left group hover:border-orange-300 transition-colors ${pont.border} border-l-4 ${isAlerta ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50/40' : isAlertaImpacto ? 'ring-2 ring-amber-400 ring-offset-1 bg-amber-50/40 animate-pulse' : ''}`}>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="text-sm font-semibold text-gray-800 leading-snug min-h-[2.5rem] line-clamp-2 group-hover:line-clamp-none">
+                      {p.codigo_sequencial != null && (
+                        <span className="inline-block mr-1.5 px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-bold align-middle">
+                          SP-{String(p.codigo_sequencial).padStart(4, '0')}
+                        </span>
+                      )}
                       {p.nome}
                     </h3>
                     <div className="flex flex-col gap-1 shrink-0 items-end">
