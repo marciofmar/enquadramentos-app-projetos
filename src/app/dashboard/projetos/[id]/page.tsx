@@ -1937,6 +1937,11 @@ export default function ProjetoDetalhePage() {
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1">
                   <div className="mb-2 w-full pr-4">
+                    {projeto.codigo_sequencial != null && (
+                      <span className="inline-block mr-2 px-2 py-0.5 rounded bg-orange-100 text-orange-700 text-xs font-bold align-middle border border-orange-200">
+                        SP-{String(projeto.codigo_sequencial).padStart(4, '0')}
+                      </span>
+                    )}
                     <h1 className="text-xl font-bold text-gray-800 inline leading-tight align-middle">{projeto.nome}</h1>
                     <button type="button" onClick={() => setHelpType('projeto')} className="inline-flex align-middle ml-2 text-gray-400 hover:text-orange-500 transition-colors" title="O que é um Projeto?">
                       <HelpCircle size={18} />

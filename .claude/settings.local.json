@@ -127,7 +127,10 @@
       "Bash(grep -A 20 \"CREATE TABLE alertas\" /c/Users/marci/projetos/enquadramentos-app-projetos/*.sql)",
       "Bash(grep -i \"alertas\" /c/Users/marci/projetos/enquadramentos-app-projetos/*.sql)",
       "Bash(npx web-push:*)",
-      "Bash(ls \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\public\\\\icons\"\" 2>/dev/null || echo \"NO_ICONS_DIR \")"
+      "Bash(ls \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\public\\\\icons\"\" 2>/dev/null || echo \"NO_ICONS_DIR \")",
+      "Bash(grep -n \"ALTER TABLE.*projetos\\\\|ADD.*numero\\\\|numero.*projetos\" C:/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
+      "Bash(grep -n \"\\\\.from\\(''''projetos''''\\)\\\\.select\\\\|\\\\.select\\(\" C:/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)",
+      "Bash(grep -n \"\\\\.numero\" C:/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)"
     ]
   }
 }
