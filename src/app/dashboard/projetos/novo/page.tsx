@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, PackagePlus, ListPlus, Info, HelpCircle, BookOpen } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import AIAssistantsCard from '@/components/AIAssistantsCard'
+import ResultadosSection from '@/components/ResultadosSection'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
@@ -14,12 +15,13 @@ import type { Profile } from '@/lib/types'
 
 interface Participante { setor_id: number | null; tipo_participante: string; papel: string }
 interface AtivParticipante { user_id: string | null; setor_id: number | null; tipo_participante: string; papel: string }
-interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; responsavel_atividade_id: string | null; participantes: AtivParticipante[] }
+interface Atividade { nome: string; descricao: string; data_prevista: string; status: string; motivo_status: string; responsavel_atividade_id: string | null; participantes: AtivParticipante[]; resultado_descricao: string }
 interface Entrega {
   nome: string; descricao: string; criterios_aceite: string; dependencias_criticas: string
   quinzena: string; status: string; motivo_status: string
   orgao_responsavel_setor_id: number | null; responsavel_entrega_id: string | null
   participantes: Participante[]; atividades: Atividade[]
+  resultado_descricao: string
 }
 
 const QUINZENAS = (() => {
@@ -156,7 +158,8 @@ export default function NovoProjetoPage() {
       status: 'aberta', motivo_status: '',
       orgao_responsavel_setor_id: null, responsavel_entrega_id: null,
       participantes: [{ setor_id: null, tipo_participante: 'setor', papel: '' }],
-      atividades: []
+      atividades: [],
+      resultado_descricao: ''
     }])
   }
 
@@ -188,7 +191,7 @@ export default function NovoProjetoPage() {
 
   function addAtividade(entregaIdx: number) {
     setEntregas(prev => prev.map((e, i) => i === entregaIdx ? {
-      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', status: 'aberta', motivo_status: '', responsavel_atividade_id: null, participantes: [] }]
+      ...e, atividades: [...e.atividades, { nome: '', descricao: '', data_prevista: '', status: 'aberta', motivo_status: '', responsavel_atividade_id: null, participantes: [], resultado_descricao: '' }]
     } : e))
   }
 
@@ -407,6 +410,7 @@ export default function NovoProjetoPage() {
           motivo_status: e.motivo_status.trim() || null,
           orgao_responsavel_setor_id: e.orgao_responsavel_setor_id || null,
           responsavel_entrega_id: e.responsavel_entrega_id || null,
+          resultado_descricao: e.resultado_descricao.trim() || null,
         }).select().single()
         if (entErr) throw entErr
 
@@ -438,6 +442,7 @@ export default function NovoProjetoPage() {
             status: a.status,
             motivo_status: a.motivo_status.trim() || null,
             responsavel_atividade_id: a.responsavel_atividade_id || null,
+            resultado_descricao: a.resultado_descricao.trim() || null,
           }).select().single()
           if (ativErr) throw ativErr
 
@@ -1152,6 +1157,18 @@ export default function NovoProjetoPage() {
                     <p className="text-[10px] text-amber-600 mt-1">Caso haja alguma dependência crítica que dependa de outro setor, ajuste com ele antes de inserí-la.</p>
                   </div>
 
+                  <ResultadosSection
+                    owner={null}
+                    descricao={e.resultado_descricao}
+                    onDescricaoChange={v => updateEntrega(eIdx, 'resultado_descricao', v)}
+                    arquivoPath={null}
+                    arquivoNome={null}
+                    arquivoTamanho={null}
+                    onArquivoChange={() => {}}
+                    uploadDisabled
+                    uploadDisabledMessage="Salve o projeto para anexar o PDF comprobatório."
+                  />
+
                   {/* Atividades */}
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <div className="flex items-center justify-between mb-2">
@@ -1282,6 +1299,19 @@ export default function NovoProjetoPage() {
                               </div>
                             ))}
                           </div>
+
+                          <ResultadosSection
+                            owner={null}
+                            descricao={a.resultado_descricao}
+                            onDescricaoChange={v => updateAtividade(eIdx, aIdx, 'resultado_descricao', v)}
+                            arquivoPath={null}
+                            arquivoNome={null}
+                            arquivoTamanho={null}
+                            onArquivoChange={() => {}}
+                            uploadDisabled
+                            uploadDisabledMessage="Salve o projeto para anexar o PDF comprobatório."
+                            compact
+                          />
                         </div>
                       </div>
                     ))}

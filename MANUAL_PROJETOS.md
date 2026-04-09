@@ -481,3 +481,39 @@ Projetos que ainda não têm líder definido são agrupados em um subgrupo chama
 - O subagrupamento é aplicado **depois** dos filtros, então ele respeita qualquer filtro ativo (setor, responsável/participante, status, busca textual etc.). Filtrar por uma pessoa específica + ativar o subagrupamento resulta em apenas um subgrupo por setor.
 - Alternar entre as visualizações **Normal** e **Compacta** continua funcionando dentro de cada subgrupo, sem alterar o layout das colunas.
 - Se um líder estava ativo quando o projeto foi criado mas depois foi removido do sistema, o subgrupo aparece com o rótulo **"Usuário removido"**.
+
+## 11. Resultados e Produtos de entregas e atividades
+
+No fundo de cada formulário de entrega e de atividade existe uma área destacada chamada **"Resultados e Produtos"**. Ela registra o que foi **efetivamente entregue** — o produto concreto, o resultado alcançado — e é diferente do escopo/descrição (que descreve o que se planejava fazer).
+
+### 11.1 Campos
+
+- **Descrição do resultado** (*opcional*) — textarea para descrever, de forma objetiva, o que foi entregue: produtos, documentos, valores alcançados, evidências verificáveis. Use referências específicas (números, datas, aprovações) e evite termos vagos como "realizado com sucesso".
+- **PDF comprobatório** (*opcional, apenas em modo de edição*) — upload de um único arquivo PDF com tamanho máximo de **4 MB**. Se houver mais de um documento, consolide-os em um PDF único antes do upload. Substituir um PDF já anexado remove automaticamente o anterior.
+
+O sistema fornece dicas inline (placeholder e tooltips) para orientar o preenchimento, e o ícone de ajuda (?) ao lado do título abre um modal com boas práticas de redação e regras de formato.
+
+### 11.2 Quem pode editar
+
+Seguem as mesmas permissões da edição da entrega/atividade:
+
+- **Setor líder do projeto, master e admin** — editam livremente descrição e PDF em qualquer entrega/atividade.
+- **Gestor do setor responsável pela entrega** — edita descrição e PDF nas entregas do seu setor.
+- **Gestor responsável pela atividade** — edita descrição e PDF nas suas atividades.
+- **Usuário comum e demais perfis** — apenas visualização.
+
+Na tela de **criação** do projeto, o textarea pode ser preenchido normalmente e é salvo junto com o insert inicial. O **upload do PDF**, porém, só fica disponível após o primeiro save da entrega/atividade — até lá, o botão de anexar aparece com a mensagem *"Salve o projeto para anexar o PDF comprobatório."*.
+
+### 11.3 Quem pode visualizar/baixar
+
+Qualquer usuário autenticado do SIGPLAN pode visualizar a descrição do resultado e baixar o PDF anexado, em linha com a visibilidade universal do sistema (ver seção 1.1). **Não anexe documentos sigilosos ou com dados pessoais sensíveis.**
+
+O download é servido por uma rota interna autenticada (`/api/resultados/download?path=...`), que verifica a sessão do usuário antes de liberar o arquivo.
+
+### 11.4 Portabilidade e hospedagem futura
+
+Os arquivos ficam hoje em um bucket privado do Supabase Storage. A arquitetura foi desenhada para permitir a **migração futura do backend de storage para hospedagem institucional** (por exemplo, filesystem local, MinIO ou S3 do órgão) **sem impacto nas URLs de download nem no banco de dados**:
+
+- O banco guarda apenas um **path lógico relativo** (ex.: `entregas/42/7d3f…b91.pdf`), nunca URLs do provedor.
+- Todo acesso a storage passa por um módulo único (`src/lib/resultados-storage.ts`) — trocar o backend se resume a reescrever esse arquivo.
+- Os links de download apontam sempre para a rota interna `/api/resultados/download`, que continuará válida após a migração.
