@@ -10,6 +10,7 @@ export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes'
   | 'campo_ind_periodicidade' | 'campo_ind_unidade' | 'campo_ind_responsavel'
   | 'campo_ind_meta' | 'campo_dependencias'
   | 'campo_risco_natureza' | 'campo_risco_probabilidade' | 'campo_risco_medida'
+  | 'resultados'
   | null
 
 interface Props {
@@ -427,6 +428,32 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           </div>
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
             <p>A medida de resposta deve ser <span className="font-bold">viável e proporcional</span> ao risco. Evite medidas genéricas como &quot;acompanhar o andamento&quot; — descreva o que será feito concretamente.</p>
+          </div>
+        </div>
+      )
+    },
+    resultados: {
+      title: 'Resultados e Produtos',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Esta área registra <span className="font-bold">o que foi efetivamente entregue</span> pela entrega ou atividade — o produto concreto, o resultado alcançado, a evidência verificável. É diferente do escopo (que descreve o que <span className="italic">se planejava</span> fazer): aqui você documenta o que <span className="italic">realmente aconteceu</span>.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Boas práticas de redação:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Seja objetivo: descreva o produto final, não o processo.</li>
+              <li>Quando possível, traga números, datas e referências verificáveis.</li>
+              <li>Mencione aprovações, validações ou publicações que comprovem a conclusão.</li>
+              <li>Evite termos vagos como &quot;realizado com sucesso&quot; — diga <span className="italic">o quê</span> foi realizado.</li>
+            </ul>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
+            <p className="font-bold mb-1">Anexo comprobatório (PDF)</p>
+            <p>Você pode anexar <span className="font-bold">um único arquivo PDF</span>, com tamanho máximo de <span className="font-bold">4 MB</span>, consolidando o documento que comprova o resultado (relatório, ofício, ata, parecer, publicação etc.). Se houver mais de um documento, junte-os em um PDF único antes do upload.</p>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900">
+            <p>O PDF fica disponível para download por <span className="font-bold">qualquer usuário autenticado</span> do SIGPLAN, em linha com a visibilidade universal do sistema. Não anexe documentos sigilosos ou com dados pessoais sensíveis.</p>
           </div>
         </div>
       )

@@ -119,6 +119,11 @@ export interface Entrega {
   motivo_status: string | null
   orgao_responsavel_setor_id: number | null
   responsavel_entrega_id: string | null
+  resultado_descricao?: string | null
+  resultado_arquivo_path?: string | null
+  resultado_arquivo_nome?: string | null
+  resultado_arquivo_tamanho?: number | null
+  resultado_arquivo_enviado_em?: string | null
 }
 
 export interface Atividade {
@@ -127,6 +132,11 @@ export interface Atividade {
   nome: string
   descricao: string
   responsavel_atividade_id: string | null
+  resultado_descricao?: string | null
+  resultado_arquivo_path?: string | null
+  resultado_arquivo_nome?: string | null
+  resultado_arquivo_tamanho?: number | null
+  resultado_arquivo_enviado_em?: string | null
 }
 
 export interface AtividadeParticipante {

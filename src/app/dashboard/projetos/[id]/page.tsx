@@ -5,10 +5,11 @@ import { createClient } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Edit3, Trash2, Save, X, Plus, PackagePlus, ListPlus,
-  CheckCircle, CheckCircle2, XCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle, Pause, BookOpen
+  CheckCircle, CheckCircle2, XCircle, Clock, AlertTriangle, Info, ChevronDown, ChevronUp, HelpCircle, Pause, BookOpen, Sparkles, FileText
 } from 'lucide-react'
 import ProjectGuidelineModal from '@/components/ProjectGuidelineModal'
 import AIAssistantsCard from '@/components/AIAssistantsCard'
+import ResultadosSection from '@/components/ResultadosSection'
 import HelpTooltipModal, { HelpType } from '@/components/HelpTooltipModal'
 import UserAutocompleteSelect from '@/components/UserAutocompleteSelect'
 import RegisterGestorModal from '@/components/RegisterGestorModal'
@@ -141,9 +142,9 @@ export default function ProjetoDetalhePage() {
     const { data: proj } = await supabase.from('projetos')
       .select(`*, responsavel_id, data_inicio, setor_lider:setor_lider_id(codigo, nome_completo),
         projeto_acoes(acao_estrategica:acao_estrategica_id(id, numero, nome)),
-        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_inicio, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id,
+        entregas(id, nome, descricao, criterios_aceite, dependencias_criticas, data_inicio, data_final_prevista, status, motivo_status, orgao_responsavel_setor_id, responsavel_entrega_id, resultado_descricao, resultado_arquivo_path, resultado_arquivo_nome, resultado_arquivo_tamanho, resultado_arquivo_enviado_em,
           entrega_participantes(id, setor_id, tipo_participante, papel, setor:setor_id(codigo, nome_completo)),
-          atividades(id, nome, descricao, data_prevista, status, motivo_status, responsavel_atividade_id,
+          atividades(id, nome, descricao, data_prevista, status, motivo_status, responsavel_atividade_id, resultado_descricao, resultado_arquivo_path, resultado_arquivo_nome, resultado_arquivo_tamanho, resultado_arquivo_enviado_em,
             atividade_participantes(id, user_id, setor_id, tipo_participante, papel, user:user_id(id, nome, setor_id), setor:setor_id(codigo, nome_completo))
           )
         )`)
@@ -627,7 +628,11 @@ export default function ProjetoDetalhePage() {
       responsavel_entrega_id: e.responsavel_entrega_id || '',
       participantes: e.entrega_participantes?.map((p: any) => ({
         id: p.id, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
-      })) || []
+      })) || [],
+      resultado_descricao: e.resultado_descricao || '',
+      resultado_arquivo_path: e.resultado_arquivo_path || null,
+      resultado_arquivo_nome: e.resultado_arquivo_nome || null,
+      resultado_arquivo_tamanho: e.resultado_arquivo_tamanho || null,
     })
     setEditingEntrega(e.id)
   }
@@ -790,6 +795,14 @@ export default function ProjetoDetalhePage() {
       status: editForm.status, motivo_status: editForm.motivo_status || null,
       orgao_responsavel_setor_id: editForm.orgao_responsavel_setor_id || null,
       responsavel_entrega_id: editForm.responsavel_entrega_id || null,
+      resultado_descricao: editForm.resultado_descricao?.trim() || null,
+      resultado_arquivo_path: editForm.resultado_arquivo_path || null,
+      resultado_arquivo_nome: editForm.resultado_arquivo_nome || null,
+      resultado_arquivo_tamanho: editForm.resultado_arquivo_tamanho || null,
+      resultado_arquivo_enviado_em:
+        (editForm.resultado_arquivo_path || null) !== (entrega?.resultado_arquivo_path || null)
+          ? (editForm.resultado_arquivo_path ? new Date().toISOString() : null)
+          : (entrega?.resultado_arquivo_enviado_em || null),
     }
     const anteriorE = {
       nome: entrega?.nome, descricao: entrega?.descricao,
@@ -1135,7 +1148,11 @@ export default function ProjetoDetalhePage() {
       entrega_participantes: entrega.entrega_participantes || [],
       participantes: a.atividade_participantes?.map((p: any) => ({
         id: p.id, user_id: p.user_id || null, setor_id: p.setor_id, tipo_participante: p.tipo_participante, papel: p.papel
-      })) || []
+      })) || [],
+      resultado_descricao: a.resultado_descricao || '',
+      resultado_arquivo_path: a.resultado_arquivo_path || null,
+      resultado_arquivo_nome: a.resultado_arquivo_nome || null,
+      resultado_arquivo_tamanho: a.resultado_arquivo_tamanho || null,
     })
     setEditingAtividade(a.id)
   }
@@ -1234,11 +1251,20 @@ export default function ProjetoDetalhePage() {
       savingRef.current = false; setSaving(false); return
     }
 
+    const ativAtualForResultado = projeto.entregas?.flatMap((e: any) => e.atividades || []).find((a: any) => a.id === ativId)
     const novosDadosA = {
       nome: editForm.nome.trim(), descricao: editForm.descricao.trim(),
       data_prevista: editForm.data_prevista || null,
       status: editForm.status, motivo_status: editForm.motivo_status || null,
-      responsavel_atividade_id: editForm.responsavel_atividade_id || null
+      responsavel_atividade_id: editForm.responsavel_atividade_id || null,
+      resultado_descricao: editForm.resultado_descricao?.trim() || null,
+      resultado_arquivo_path: editForm.resultado_arquivo_path || null,
+      resultado_arquivo_nome: editForm.resultado_arquivo_nome || null,
+      resultado_arquivo_tamanho: editForm.resultado_arquivo_tamanho || null,
+      resultado_arquivo_enviado_em:
+        (editForm.resultado_arquivo_path || null) !== (ativAtualForResultado?.resultado_arquivo_path || null)
+          ? (editForm.resultado_arquivo_path ? new Date().toISOString() : null)
+          : (ativAtualForResultado?.resultado_arquivo_enviado_em || null),
     }
 
     let realAtivId = ativId
@@ -2602,6 +2628,22 @@ export default function ProjetoDetalhePage() {
                             </div>
                           )}
 
+                          <ResultadosSection
+                            owner={{ kind: 'entrega', entregaId: e.id }}
+                            descricao={editForm.resultado_descricao || ''}
+                            onDescricaoChange={v => setEditForm({ ...editForm, resultado_descricao: v })}
+                            arquivoPath={editForm.resultado_arquivo_path || null}
+                            arquivoNome={editForm.resultado_arquivo_nome || null}
+                            arquivoTamanho={editForm.resultado_arquivo_tamanho || null}
+                            onArquivoChange={meta => setEditForm({
+                              ...editForm,
+                              resultado_arquivo_path: meta?.path || null,
+                              resultado_arquivo_nome: meta?.nome || null,
+                              resultado_arquivo_tamanho: meta?.tamanho || null,
+                            })}
+                            disabled={!(ePerms.canFull || ePerms.canEditLimited)}
+                          />
+
                           <div className="flex gap-2">
                             <button onClick={() => saveEditEntrega(e.id)} disabled={saving}
                               className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
@@ -2674,6 +2716,28 @@ export default function ProjetoDetalhePage() {
                               <span className="font-medium">{participanteLabel(p)}</span>: {p.papel}
                             </span>
                           ))}
+                        </div>
+                      )}
+
+                      {(e.resultado_descricao || e.resultado_arquivo_path) && (
+                        <div className="mt-3 mb-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/60 p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Sparkles className="text-emerald-600" size={16} />
+                            <h4 className="text-sm font-bold text-emerald-900">Resultados e Produtos</h4>
+                          </div>
+                          {e.resultado_descricao && (
+                            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{e.resultado_descricao}</p>
+                          )}
+                          {e.resultado_arquivo_path && (
+                            <a
+                              href={`/api/resultados/download?path=${encodeURIComponent(e.resultado_arquivo_path)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 px-2 py-1 rounded"
+                            >
+                              <FileText size={13} /> {e.resultado_arquivo_nome || 'Baixar PDF do resultado'}
+                            </a>
+                          )}
                         </div>
                       )}
 
@@ -2813,6 +2877,24 @@ export default function ProjetoDetalhePage() {
                                           )}
                                         </div>
                                       )}
+                                      <ResultadosSection
+                                        owner={a.id > 0 ? { kind: 'atividade', atividadeId: a.id } : null}
+                                        descricao={editForm.resultado_descricao || ''}
+                                        onDescricaoChange={v => setEditForm({ ...editForm, resultado_descricao: v })}
+                                        arquivoPath={editForm.resultado_arquivo_path || null}
+                                        arquivoNome={editForm.resultado_arquivo_nome || null}
+                                        arquivoTamanho={editForm.resultado_arquivo_tamanho || null}
+                                        onArquivoChange={meta => setEditForm({
+                                          ...editForm,
+                                          resultado_arquivo_path: meta?.path || null,
+                                          resultado_arquivo_nome: meta?.nome || null,
+                                          resultado_arquivo_tamanho: meta?.tamanho || null,
+                                        })}
+                                        disabled={!(aPerms.canFull || aPerms.canEditLimited)}
+                                        uploadDisabled={editForm._isNew}
+                                        uploadDisabledMessage={editForm._isNew ? 'Salve a atividade para anexar o PDF comprobatório.' : undefined}
+                                        compact
+                                      />
                                       <div className="flex gap-2 mt-4">
                                         <button onClick={() => saveEditAtividade(a.id, e.id)} disabled={saving}
                                           className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg"><Save size={13} /> Salvar</button>
@@ -2862,6 +2944,28 @@ export default function ProjetoDetalhePage() {
                                           </div>
                                         )}
                                       </div>
+
+                                      {(a.resultado_descricao || a.resultado_arquivo_path) && (
+                                        <div className="mt-3 ml-7 rounded-lg border-2 border-emerald-200 bg-emerald-50/60 p-3">
+                                          <div className="flex items-center gap-1.5 mb-1">
+                                            <Sparkles className="text-emerald-600" size={13} />
+                                            <span className="text-xs font-bold text-emerald-900">Resultados e Produtos</span>
+                                          </div>
+                                          {a.resultado_descricao && (
+                                            <p className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">{a.resultado_descricao}</p>
+                                          )}
+                                          {a.resultado_arquivo_path && (
+                                            <a
+                                              href={`/api/resultados/download?path=${encodeURIComponent(a.resultado_arquivo_path)}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 bg-white border border-emerald-200 px-2 py-0.5 rounded"
+                                            >
+                                              <FileText size={11} /> {a.resultado_arquivo_nome || 'Baixar PDF'}
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
 
                                       {/* Participantes da Atividade */}
                                       {a.atividade_participantes?.length > 0 && (
