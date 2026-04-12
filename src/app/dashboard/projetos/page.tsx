@@ -444,7 +444,7 @@ export default function ProjetosPage() {
 
   const [groupBy, setGroupBy] = useState<'setor' | 'status'>('setor')
   const [viewMode, setViewMode] = useState<'normal' | 'compact'>('compact')
-  const [subgroupByResponsavel, setSubgroupByResponsavel] = useState(false)
+  const [subgroupByResponsavel, setSubgroupByResponsavel] = useState(true)
 
   // Mapa rápido id -> nome de usuário para renderizar headers de subgrupo
   const userLookup = useMemo(() => {
