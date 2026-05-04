@@ -951,9 +951,9 @@ export default function NovoProjetoPage() {
                           <select value={risco.impacto || ''} onChange={e => setRiscos(riscos.map((item, i) => i === idx ? { ...item, impacto: e.target.value } : item))}
                             className="input-field text-sm">
                             <option value="">Selecione...</option>
-                            <option value="alto">Alto</option>
-                            <option value="medio">Médio</option>
                             <option value="baixo">Baixo</option>
+                            <option value="medio">Médio</option>
+                            <option value="alto">Alto</option>
                           </select>
                         </div>
                         <div className="md:col-span-2">

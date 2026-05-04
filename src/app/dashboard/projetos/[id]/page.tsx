@@ -456,12 +456,23 @@ export default function ProjetoDetalhePage() {
       savingRef.current = false; setSaving(false); return
     }
 
-    // Save riscos: delete all then re-insert
+    // Save riscos: delete all then re-insert (with rollback if insert fails)
+    const { data: oldRiscos } = await supabase.from('riscos').select('*').eq('projeto_id', projeto.id)
     await supabase.from('riscos').delete().eq('projeto_id', projeto.id)
     if (riscosComDados.length > 0) {
-      await supabase.from('riscos').insert(riscosComDados.map((r: any) => ({
+      const { error: riscosErr } = await supabase.from('riscos').insert(riscosComDados.map((r: any) => ({
         projeto_id: projeto.id, natureza: r.natureza || '', probabilidade: r.probabilidade || '', impacto: r.impacto || null, medida_resposta: r.medida_resposta || ''
       })))
+      if (riscosErr) {
+        if (oldRiscos && oldRiscos.length > 0) {
+          await supabase.from('riscos').insert(oldRiscos.map((r: any) => {
+            const { id, created_at, ...rest } = r
+            return rest
+          }))
+        }
+        alert('Erro ao salvar a Matriz de Riscos: ' + riscosErr.message + '\n\nOs registros anteriores foram restaurados.')
+        savingRef.current = false; setSaving(false); return
+      }
     }
 
     await auditLog('update', 'projeto', projeto.id, anterior, novosDados)
@@ -1898,9 +1909,9 @@ export default function ProjetoDetalhePage() {
                             <select value={risco.impacto || ''} onChange={e => setEditForm({ ...editForm, riscos: editForm.riscos.map((item: any, i: number) => i === idx ? { ...item, impacto: e.target.value } : item) })}
                               className="input-field text-sm">
                               <option value="">Selecione...</option>
-                              <option value="alto">Alto</option>
-                              <option value="medio">Médio</option>
                               <option value="baixo">Baixo</option>
+                              <option value="medio">Médio</option>
+                              <option value="alto">Alto</option>
                             </select>
                           </div>
                           <div className="md:col-span-2">
