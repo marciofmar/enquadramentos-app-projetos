@@ -28,12 +28,13 @@ Cada projeto pode ter **nenhum ou múltiplos indicadores**. Cada indicador é co
 
 ### 1.4 Matriz de Riscos
 
-Cada projeto pode ter **nenhum ou múltiplos riscos** cadastrados em sua matriz de riscos. Cada risco é composto por 3 campos:
+Cada projeto pode ter **nenhum ou múltiplos riscos** cadastrados em sua matriz de riscos. Cada risco é composto por 4 campos:
 
 | Campo | Descrição | Obrigatoriedade |
 |-------|-----------|-----------------|
 | **Natureza** | O que pode acontecer — evento ou condição incerta que pode afetar o projeto | Obrigatório (se qualquer campo for preenchido) |
 | **Probabilidade** | Chance de ocorrência: **Baixa**, **Média** ou **Alta** | Opcional |
+| **Impacto** | Magnitude das consequências caso o risco se concretize: **Alto**, **Médio** ou **Baixo** | Opcional |
 | **Medida de Resposta** | Ação concreta para reduzir, contornar ou mitigar os efeitos do risco | Opcional |
 
 O formato é idêntico ao de indicadores: o usuário pode adicionar quantos riscos achar necessário usando o botão "+ Risco", e cada risco pode ser removido individualmente. Se qualquer campo de um risco for preenchido, o campo **Natureza** torna-se obrigatório.
