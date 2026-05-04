@@ -182,6 +182,7 @@ export interface Risco {
   projeto_id?: number
   natureza: string
   probabilidade: string
+  impacto?: string
   medida_resposta: string
 }
 

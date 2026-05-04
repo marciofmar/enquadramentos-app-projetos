@@ -64,7 +64,7 @@ export default function NovoProjetoPage() {
   const [setorLiderId, setSetorLiderId] = useState<number | ''>('')
   const [responsavelId, setResponsavelId] = useState<string | null>(null)
   const [indicadores, setIndicadores] = useState<{ nome: string, formula: string, fonte_dados: string, periodicidade: string, unidade_medida: string, responsavel: string, meta: string }[]>([])
-  const [riscos, setRiscos] = useState<{ natureza: string, probabilidade: string, medida_resposta: string }[]>([])
+  const [riscos, setRiscos] = useState<{ natureza: string, probabilidade: string, impacto: string, medida_resposta: string }[]>([])
   const [dependenciasProjetos, setDependenciasProjetos] = useState('')
   const savingRef = useRef(false)
 
@@ -342,7 +342,7 @@ export default function NovoProjetoPage() {
     }
 
     // Validate risco natureza required
-    const riscosComDados = riscos.filter(r => r.natureza || r.probabilidade || r.medida_resposta)
+    const riscosComDados = riscos.filter(r => r.natureza || r.probabilidade || r.impacto || r.medida_resposta)
     if (riscosComDados.some(r => !r.natureza?.trim())) {
       alert('Preencha o campo "Natureza" de todos os riscos.')
       savingRef.current = false; return
@@ -388,7 +388,7 @@ export default function NovoProjetoPage() {
 
       // Insert riscos
       if (riscosComDados.length > 0) {
-        await supabase.from('riscos').insert(riscosComDados.map(r => ({ projeto_id: proj.id, ...r })))
+        await supabase.from('riscos').insert(riscosComDados.map(r => ({ projeto_id: proj.id, ...r, impacto: r.impacto || null })))
       }
 
       await supabase.from('audit_log').insert({
@@ -904,7 +904,7 @@ export default function NovoProjetoPage() {
                   <div className="flex items-center gap-2">
                     <label className="block text-sm font-semibold text-gray-700">Matriz de Riscos</label>
                   </div>
-                  <button type="button" onClick={() => setRiscos([...riscos, { natureza: '', probabilidade: '', medida_resposta: '' }])}
+                  <button type="button" onClick={() => setRiscos([...riscos, { natureza: '', probabilidade: '', impacto: '', medida_resposta: '' }])}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
                     <Plus size={14} /> Risco
                   </button>
@@ -941,6 +941,19 @@ export default function NovoProjetoPage() {
                             <option value="baixa">Baixa</option>
                             <option value="media">Média</option>
                             <option value="alta">Alta</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <label className="text-xs text-gray-500">Impacto</label>
+                            <button type="button" onClick={() => setHelpType('campo_risco_impacto')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                          </div>
+                          <select value={risco.impacto || ''} onChange={e => setRiscos(riscos.map((item, i) => i === idx ? { ...item, impacto: e.target.value } : item))}
+                            className="input-field text-sm">
+                            <option value="">Selecione...</option>
+                            <option value="baixo">Baixo</option>
+                            <option value="medio">Médio</option>
+                            <option value="alto">Alto</option>
                           </select>
                         </div>
                         <div className="md:col-span-2">

@@ -450,18 +450,29 @@ export default function ProjetoDetalhePage() {
     }
 
     // Validate risco natureza required
-    const riscosComDados = (editForm.riscos || []).filter((r: any) => r.natureza || r.probabilidade || r.medida_resposta)
+    const riscosComDados = (editForm.riscos || []).filter((r: any) => r.natureza || r.probabilidade || r.impacto || r.medida_resposta)
     if (riscosComDados.some((r: any) => !r.natureza?.trim())) {
       alert('Preencha o campo "Natureza" de todos os riscos.')
       savingRef.current = false; setSaving(false); return
     }
 
-    // Save riscos: delete all then re-insert
+    // Save riscos: delete all then re-insert (with rollback if insert fails)
+    const { data: oldRiscos } = await supabase.from('riscos').select('*').eq('projeto_id', projeto.id)
     await supabase.from('riscos').delete().eq('projeto_id', projeto.id)
     if (riscosComDados.length > 0) {
-      await supabase.from('riscos').insert(riscosComDados.map((r: any) => ({
-        projeto_id: projeto.id, natureza: r.natureza || '', probabilidade: r.probabilidade || '', medida_resposta: r.medida_resposta || ''
+      const { error: riscosErr } = await supabase.from('riscos').insert(riscosComDados.map((r: any) => ({
+        projeto_id: projeto.id, natureza: r.natureza || '', probabilidade: r.probabilidade || '', impacto: r.impacto || null, medida_resposta: r.medida_resposta || ''
       })))
+      if (riscosErr) {
+        if (oldRiscos && oldRiscos.length > 0) {
+          await supabase.from('riscos').insert(oldRiscos.map((r: any) => {
+            const { id, created_at, ...rest } = r
+            return rest
+          }))
+        }
+        alert('Erro ao salvar a Matriz de Riscos: ' + riscosErr.message + '\n\nOs registros anteriores foram restaurados.')
+        savingRef.current = false; setSaving(false); return
+      }
     }
 
     await auditLog('update', 'projeto', projeto.id, anterior, novosDados)
@@ -1851,7 +1862,7 @@ export default function ProjetoDetalhePage() {
                     <div className="flex items-center gap-2">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Matriz de Riscos</label>
                     </div>
-                    <button type="button" onClick={() => setEditForm({ ...editForm, riscos: [...(editForm.riscos || []), { natureza: '', probabilidade: '', medida_resposta: '' }] })}
+                    <button type="button" onClick={() => setEditForm({ ...editForm, riscos: [...(editForm.riscos || []), { natureza: '', probabilidade: '', impacto: '', medida_resposta: '' }] })}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
                       <Plus size={14} /> Risco
                     </button>
@@ -1888,6 +1899,19 @@ export default function ProjetoDetalhePage() {
                               <option value="baixa">Baixa</option>
                               <option value="media">Média</option>
                               <option value="alta">Alta</option>
+                            </select>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <label className="text-xs text-gray-500">Impacto</label>
+                              <button type="button" onClick={() => setHelpType('campo_risco_impacto')} className="text-gray-400 hover:text-orange-500 transition-colors"><HelpCircle size={12} /></button>
+                            </div>
+                            <select value={risco.impacto || ''} onChange={e => setEditForm({ ...editForm, riscos: editForm.riscos.map((item: any, i: number) => i === idx ? { ...item, impacto: e.target.value } : item) })}
+                              className="input-field text-sm">
+                              <option value="">Selecione...</option>
+                              <option value="baixo">Baixo</option>
+                              <option value="medio">Médio</option>
+                              <option value="alto">Alto</option>
                             </select>
                           </div>
                           <div className="md:col-span-2">
@@ -2129,6 +2153,18 @@ export default function ProjetoDetalhePage() {
                                 'bg-green-100 text-green-700'
                               }`}>
                                 {risco.probabilidade === 'media' ? 'Média' : risco.probabilidade.charAt(0).toUpperCase() + risco.probabilidade.slice(1)}
+                              </span>
+                            </div>
+                          )}
+                          {risco.impacto && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500 text-xs">Impacto:</span>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                risco.impacto === 'alto' ? 'bg-red-100 text-red-700' :
+                                risco.impacto === 'medio' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {risco.impacto === 'medio' ? 'Médio' : risco.impacto.charAt(0).toUpperCase() + risco.impacto.slice(1)}
                               </span>
                             </div>
                           )}

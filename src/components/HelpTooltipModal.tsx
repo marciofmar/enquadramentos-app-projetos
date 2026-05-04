@@ -9,7 +9,7 @@ export type HelpType = 'projeto' | 'entrega' | 'atividade' | 'permissoes'
   | 'campo_ind_nome' | 'campo_ind_formula' | 'campo_ind_fonte'
   | 'campo_ind_periodicidade' | 'campo_ind_unidade' | 'campo_ind_responsavel'
   | 'campo_ind_meta' | 'campo_dependencias'
-  | 'campo_risco_natureza' | 'campo_risco_probabilidade' | 'campo_risco_medida'
+  | 'campo_risco_natureza' | 'campo_risco_probabilidade' | 'campo_risco_impacto' | 'campo_risco_medida'
   | 'resultados'
   | null
 
@@ -406,6 +406,27 @@ export default function HelpTooltipModal({ type, onClose, userRole }: Props) {
           </div>
           <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
             <p>A probabilidade pode mudar ao longo do projeto. Reavalie periodicamente, especialmente quando houver mudanças no contexto ou nas condições iniciais.</p>
+          </div>
+        </div>
+      )
+    },
+    campo_risco_impacto: {
+      title: 'Impacto do Risco',
+      body: (
+        <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+          <p>
+            Avalie a <span className="font-bold">magnitude das consequências</span> caso o risco se concretize, considerando efeitos sobre prazo, custo, qualidade, escopo, reputação ou pessoas envolvidas no projeto.
+          </p>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-900">
+            <p className="font-bold mb-2">Escala de referência:</p>
+            <ul className="space-y-2">
+              <li><span className="font-bold text-green-700">Baixo</span> — Efeitos pequenos e contornáveis: pequenos ajustes de cronograma, retrabalho localizado, sem comprometer entregas principais.</li>
+              <li><span className="font-bold text-yellow-700">Médio</span> — Efeitos relevantes: atrasos significativos, necessidade de replanejamento parcial, custos adicionais ou perda de qualidade em parte das entregas.</li>
+              <li><span className="font-bold text-red-700">Alto</span> — Efeitos graves: comprometimento de entregas centrais, inviabilidade do projeto, prejuízos institucionais ou reputacionais relevantes.</li>
+            </ul>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg border border-green-100 text-green-900">
+            <p>A combinação de <span className="font-bold">probabilidade × impacto</span> ajuda a priorizar quais riscos exigem medidas de resposta mais robustas.</p>
           </div>
         </div>
       )
