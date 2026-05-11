@@ -105,6 +105,7 @@ export interface Projeto {
   setor_lider_id: number
   criado_por: string
   created_at: string
+  recorrente: boolean
 }
 
 export interface Entrega {

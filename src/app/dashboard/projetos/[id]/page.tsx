@@ -341,7 +341,8 @@ export default function ProjetoDetalhePage() {
       setor_lider_id: projeto.setor_lider_id,
       acoes: projeto.projeto_acoes?.map((pa: any) => pa.acao_estrategica?.id) || [],
       indicadores: indicadores.map(i => ({ ...i })),
-      riscos: riscos.map(r => ({ ...r }))
+      riscos: riscos.map(r => ({ ...r })),
+      recorrente: projeto.recorrente ?? false,
     })
     setEditingProjeto(true)
   }
@@ -416,6 +417,7 @@ export default function ProjetoDetalhePage() {
       dependencias_projetos: editForm.dependencias_projetos?.trim() || null,
       tipo_acao: editForm.tipo_acao?.length > 0 ? editForm.tipo_acao : null,
       setor_lider_id: editForm.setor_lider_id,
+      recorrente: editForm.recorrente ?? false,
     }
     const anterior = {
       nome: projeto.nome, descricao: projeto.descricao, problema_resolve: projeto.problema_resolve,
@@ -1719,6 +1721,14 @@ export default function ProjetoDetalhePage() {
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Data de início</label>
                   <input type="date" value={editForm.data_inicio || ''} onChange={e => setEditForm({ ...editForm, data_inicio: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm text-gray-700" />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={editForm.recorrente ?? false} onChange={e => setEditForm({ ...editForm, recorrente: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                    <span className="text-sm text-gray-700 font-medium">Projeto recorrente</span>
+                    <span className="text-xs text-gray-400">(se repete periodicamente)</span>
+                  </label>
                 </div>
               </div>
 
