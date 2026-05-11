@@ -130,7 +130,10 @@
       "Bash(ls \"C:\\\\Users\\\\marci\\\\projetos\\\\enquadramentos-app-projetos\\\\public\\\\icons\"\" 2>/dev/null || echo \"NO_ICONS_DIR \")",
       "Bash(grep -n \"ALTER TABLE.*projetos\\\\|ADD.*numero\\\\|numero.*projetos\" C:/Users/marci/projetos/enquadramentos-app-projetos/supabase/migrations/*.sql)",
       "Bash(grep -n \"\\\\.from\\(''''projetos''''\\)\\\\.select\\\\|\\\\.select\\(\" C:/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)",
-      "Bash(grep -n \"\\\\.numero\" C:/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)"
+      "Bash(grep -n \"\\\\.numero\" C:/Users/marci/projetos/enquadramentos-app-projetos/src/app/dashboard/projetos/[id]/page.tsx)",
+      "Bash(cd /mnt/c/Users/marci/projetos/enquadramentos-app-projetos && npx tsc --noEmit 2>&1 | head -20)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }
